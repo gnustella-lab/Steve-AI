@@ -146,7 +146,7 @@ Custom overlay GUI activated with K key. Uses Minecraft's Screen class with cust
 
 ## Building from Source
 
-This fork intentionally does **not** commit binary files, including `gradle/wrapper/gradle-wrapper.jar`. Use a local Gradle installation with Java 17, or regenerate the wrapper locally before using `./gradlew`:
+Use Java 17 with a local Gradle 8.x installation. ForgeGradle 6 does not support Gradle 9+, so `gradle build` fails when your installed Gradle is too new. Gradle 8.4 is the known-good version for this project:
 
 ```bash
 git clone https://github.com/YuvDwi/Steve.git
@@ -154,11 +154,11 @@ cd Steve
 JAVA_HOME=/path/to/jdk17 gradle build
 ```
 
-If you prefer the wrapper workflow, generate the wrapper JAR locally (do not commit it in this fork):
+If your default `gradle` is 9.x or newer, install/select Gradle 8.4 before building, or regenerate the wrapper JAR locally (do not commit it in this fork):
 
 ```bash
 gradle wrapper --gradle-version 8.4
-./gradlew build
+JAVA_HOME=/path/to/jdk17 ./gradlew build
 ```
 
 Output JAR will be in `build/libs/`. To test in development:
