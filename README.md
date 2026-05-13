@@ -144,9 +144,6 @@ Steves are custom EntityType registered via Forge's deferred registry system. Th
 **GUI Implementation**
 Custom overlay GUI activated with K key. Uses Minecraft's Screen class with custom rendering. Text input forwarded to TaskPlanner on submission.
 
-## Fork Notes
-
-This fork intentionally keeps the upstream README content and adds fork-specific build and release instructions below. If GitHub reports a README merge conflict, keep the upstream usage/architecture sections and the fork-specific no-binary Gradle/release workflow notes from this branch.
 
 ## Building from Source
 
@@ -308,13 +305,3 @@ MIT
 
 Found a bug? Open an issue: https://github.com/YuvDwi/Steve/issues
 
-## Publishing a Release
-
-This repository does not commit compiled JARs or other binary assets. To publish the compiled mod JAR, push a version tag or run the release workflow manually:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The GitHub Actions release workflow builds the project with Java 17, creates `build/libs/steve-ai-mod-<version>.jar`, and uploads both the JAR and its `.sha256` checksum to the GitHub Release.
