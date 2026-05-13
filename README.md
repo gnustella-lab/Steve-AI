@@ -144,7 +144,6 @@ Steves are custom EntityType registered via Forge's deferred registry system. Th
 **GUI Implementation**
 Custom overlay GUI activated with K key. Uses Minecraft's Screen class with custom rendering. Text input forwarded to TaskPlanner on submission.
 
-
 ## Building from Source
 
 This fork intentionally does **not** commit binary files, including `gradle/wrapper/gradle-wrapper.jar`. Use a local Gradle installation with Java 17, or regenerate the wrapper locally before using `./gradlew`:
@@ -304,4 +303,3 @@ MIT
 ## Issues
 
 Found a bug? Open an issue: https://github.com/YuvDwi/Steve/issues
-
