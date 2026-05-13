@@ -2,7 +2,7 @@ brain.md
 
 # Build
 build/
-# Binary files are intentionally not committed; regenerate with `gradle wrapper` if needed.
+# Binary files are intentionally not committed; use a local Gradle 8.x installation.
 gradle/wrapper/gradle-wrapper.jar
 .gradle/
 bin/
