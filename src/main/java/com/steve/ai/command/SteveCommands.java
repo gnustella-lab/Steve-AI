@@ -4,8 +4,10 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.steve.ai.SteveMod;
+import com.steve.ai.config.SteveConfig;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.entity.SteveManager;
+import com.steve.ai.plugin.PluginManager;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -31,7 +33,59 @@ public class SteveCommands {
                 .then(Commands.argument("name", StringArgumentType.string())
                     .then(Commands.argument("command", StringArgumentType.greedyString())
                         .executes(SteveCommands::tellSteve))))
+            .then(Commands.literal("status")
+                .executes(SteveCommands::showStatus))
         );
+    }
+
+    /**
+     * /steve status - Displays system diagnostics.
+     */
+    private static int showStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+
+        // Provider
+        String provider = SteveConfig.AI_PROVIDER.get();
+        source.sendSuccess(() -> Component.literal("§6=== Steve AI Status ==="), false);
+
+        // LLM provider config
+        source.sendSuccess(() -> Component.literal(
+            "§eProvider: §f" + provider + "  §emaxTokens: §f" + SteveConfig.MAX_TOKENS.get() +
+            "  §etemperature: §f" + SteveConfig.TEMPERATURE.get()), false);
+
+        // API key status per provider
+        boolean openaiKey = !SteveConfig.getOpenAIApiKey().isBlank();
+        boolean groqKey = !SteveConfig.getGroqApiKey().isBlank();
+        boolean geminiKey = !SteveConfig.getGeminiApiKey().isBlank();
+        source.sendSuccess(() -> Component.literal(
+            "§eKeys: §fopenai=" + (openaiKey ? "§aconfigured" : "§cmissing") +
+            "§f  groq=" + (groqKey ? "§aconfigured" : "§cmissing") +
+            "§f  gemini=" + (geminiKey ? "§aconfigured" : "§cmissing")), false);
+
+        // Provider health check via shared LLM cache
+        var cache = SteveMod.getSharedLLMCache();
+        if (cache != null) {
+            var stats = cache.getStats();
+            source.sendSuccess(() -> Component.literal(
+                "§eCache: §f" + cache.size() + " entries, " +
+                String.format("%.0f%% hit rate", stats.hitRate() * 100) +
+                " (" + stats.hitCount() + " hits / " + stats.missCount() + " misses)"), false);
+        }
+
+        // Active Steves
+        SteveManager manager = SteveMod.getSteveManager();
+        source.sendSuccess(() -> Component.literal(
+            "§eActive Steves: §f" + manager.getActiveCount() + " / " + SteveConfig.MAX_ACTIVE_STEVES.get()), false);
+
+        // Plugin info
+        PluginManager pluginManager = PluginManager.getInstance();
+        if (pluginManager.isInitialized()) {
+            source.sendSuccess(() -> Component.literal(
+                "§ePlugins: §f" + pluginManager.getPluginCount() + " loaded (" +
+                String.join(", ", pluginManager.getLoadedPluginIds()) + ")"), false);
+        }
+
+        return 1;
     }
 
     private static int spawnSteve(CommandContext<CommandSourceStack> context) {

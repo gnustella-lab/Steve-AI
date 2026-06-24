@@ -5,6 +5,8 @@ import com.steve.ai.command.SteveCommands;
 import com.steve.ai.config.SteveConfig;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.entity.SteveManager;
+import com.steve.ai.llm.async.LLMCache;
+import com.steve.ai.llm.resilience.LLMFallbackHandler;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.common.MinecraftForge;
@@ -38,6 +40,12 @@ public class SteveMod {
 
     private static SteveManager steveManager;
 
+    /** Shared LLM cache across all Steves (thread-safe). */
+    private static final LLMCache sharedLLMCache = new LLMCache();
+
+    /** Shared fallback handler across all Steves (thread-safe). */
+    private static final LLMFallbackHandler sharedFallbackHandler = new LLMFallbackHandler();
+
     public SteveMod() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
@@ -67,6 +75,16 @@ public class SteveMod {
 
     public static SteveManager getSteveManager() {
         return steveManager;
+    }
+
+    /** Returns the shared LLM cache used by all TaskPlanners. */
+    public static LLMCache getSharedLLMCache() {
+        return sharedLLMCache;
+    }
+
+    /** Returns the shared fallback handler used by all TaskPlanners. */
+    public static LLMFallbackHandler getSharedFallbackHandler() {
+        return sharedFallbackHandler;
     }
 }
 

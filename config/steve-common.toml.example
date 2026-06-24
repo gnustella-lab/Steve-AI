@@ -1,16 +1,42 @@
-[openai]
-    # Your OpenAI API key
-    # Get your API key from: https://platform.openai.com/api-keys
-    apiKey = "your-openai-api-key-here"
+# Steve AI Configuration
+# Copy this file to: config/steve-common.toml
+# 
+# API keys can also be set via environment variables (recommended for servers):
+#   STEVE_OPENAI_API_KEY, STEVE_GROQ_API_KEY, STEVE_GEMINI_API_KEY
+
+[ai]
+    # AI provider to use: "groq" (fastest), "openai", or "gemini"
+    provider = "groq"
     
-    # Using GPT-3.5-turbo (much cheaper than GPT-4 for testing)
-    model = "gpt-3.5-turbo"
-    
-    # Maximum tokens per API request
+    # Maximum tokens per API request (shared across providers)
     maxTokens = 1000
     
     # Temperature (0.0-2.0, lower is more deterministic)
     temperature = 0.7
+
+[openai]
+    # Your OpenAI API key
+    # Get your API key from: https://platform.openai.com/api-keys
+    apiKey = ""
+    
+    # OpenAI model: gpt-4o (recommended), gpt-4-turbo, gpt-3.5-turbo
+    model = "gpt-4o"
+
+[groq]
+    # Your Groq API key
+    # Get your API key from: https://console.groq.com/keys
+    apiKey = ""
+    
+    # Groq model: llama-3.1-8b-instant (fastest), llama-3.1-70b-versatile, mixtral-8x7b-32768
+    model = "llama-3.1-8b-instant"
+
+[gemini]
+    # Your Gemini API key
+    # Get your API key from: https://aistudio.google.com/apikey
+    apiKey = ""
+    
+    # Gemini model: gemini-1.5-flash (fast), gemini-1.5-pro, gemini-2.0-flash-exp
+    model = "gemini-1.5-flash"
 
 [behavior]
     # Ticks between action checks (20 ticks = 1 second)
@@ -21,4 +47,3 @@
     
     # Maximum number of Steves that can be active simultaneously
     maxActiveSteves = 10
-

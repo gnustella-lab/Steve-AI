@@ -13,6 +13,7 @@ import com.steve.ai.config.SteveConfig;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.plugin.ActionRegistry;
 import com.steve.ai.plugin.PluginManager;
+import com.steve.ai.security.PermissionManager;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -308,6 +309,17 @@ public class ActionExecutor {
     }
 
     private void executeTask(Task task) {
+        String actionType = task.getAction();
+
+        // Check permissions before executing
+        PermissionManager permManager = PermissionManager.getInstance();
+        if (!permManager.canExecute(steve.getSteveName(), actionType)) {
+            SteveMod.LOGGER.warn("Steve '{}' lacks permission for action '{}', skipping task",
+                steve.getSteveName(), actionType);
+            sendToGUI(steve.getSteveName(), "I don't have permission to " + actionType + ".");
+            return;
+        }
+
         SteveMod.LOGGER.info("Steve '{}' executing task: {} (action type: {})", 
             steve.getSteveName(), task, task.getAction());
         

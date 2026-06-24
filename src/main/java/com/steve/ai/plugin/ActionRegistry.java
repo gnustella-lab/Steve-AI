@@ -253,6 +253,48 @@ public class ActionRegistry {
     }
 
     /**
+     * Returns a map of action names to the plugins that registered them.
+     * Useful for detecting conflicts between plugins.
+     *
+     * @return Unmodifiable map of action name → plugin ID
+     */
+    public Map<String, String> getActionOwnership() {
+        return Collections.unmodifiableMap(new HashMap<>(actionToPlugin));
+    }
+
+    /**
+     * Validates that no two different plugins register the same action name
+     * with the same priority. Returns a report string suitable for logging or
+     * displaying in status commands.
+     *
+     * @return A summary of conflicts, or "No conflicts detected" if clean
+     */
+    public String validateConflicts() {
+        // Group registrations by action name
+        Map<String, Set<String>> actionToPlugins = new HashMap<>();
+        for (var entry : actionToPlugin.entrySet()) {
+            actionToPlugins.computeIfAbsent(entry.getKey(), k -> new HashSet<>()).add(entry.getValue());
+        }
+
+        StringBuilder report = new StringBuilder();
+        int conflictCount = 0;
+
+        for (var entry : actionToPlugins.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                conflictCount++;
+                report.append("  • '").append(entry.getKey()).append("' registered by: ")
+                    .append(String.join(", ", entry.getValue())).append("\n");
+            }
+        }
+
+        if (conflictCount == 0) {
+            return "No conflicts detected";
+        }
+
+        return conflictCount + " action name conflict(s) found:\n" + report.toString().trim();
+    }
+
+    /**
      * Internal entry storing factory with metadata.
      */
     private static class FactoryEntry {

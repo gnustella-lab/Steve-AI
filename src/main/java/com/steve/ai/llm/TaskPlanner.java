@@ -32,27 +32,35 @@ public class TaskPlanner {
         this.geminiClient = new GeminiClient();
         this.groqClient = new GroqClient();
 
-        // Initialize async infrastructure
-        this.llmCache = new LLMCache();
-        this.fallbackHandler = new LLMFallbackHandler();
+        // Initialize async infrastructure (shared across all Steves)
+        this.llmCache = SteveMod.getSharedLLMCache();
+        this.fallbackHandler = SteveMod.getSharedFallbackHandler();
 
-        // Initialize async clients with resilience wrappers
-        String apiKey = SteveConfig.OPENAI_API_KEY.get();
-        String model = SteveConfig.OPENAI_MODEL.get();
+        // Resolve provider-specific API keys (config → env var fallback)
+        String openaiApiKey = SteveConfig.getOpenAIApiKey();
+        String openaiModel = SteveConfig.OPENAI_MODEL.get();
+        String groqApiKey = SteveConfig.getGroqApiKey();
+        String groqModel = SteveConfig.GROQ_MODEL.get();
+        String geminiApiKey = SteveConfig.getGeminiApiKey();
+        String geminiModel = SteveConfig.GEMINI_MODEL.get();
         int maxTokens = SteveConfig.MAX_TOKENS.get();
         double temperature = SteveConfig.TEMPERATURE.get();
 
-        // Create base async clients
-        AsyncLLMClient baseOpenAI = new AsyncOpenAIClient(apiKey, model, maxTokens, temperature);
-        AsyncLLMClient baseGroq = new AsyncGroqClient(apiKey, "llama-3.1-8b-instant", 500, temperature);
-        AsyncLLMClient baseGemini = new AsyncGeminiClient(apiKey, "gemini-1.5-flash", maxTokens, temperature);
+        // Create base async clients with correct provider-specific credentials
+        AsyncLLMClient baseOpenAI = new AsyncOpenAIClient(openaiApiKey, openaiModel, maxTokens, temperature);
+        AsyncLLMClient baseGroq = new AsyncGroqClient(groqApiKey, groqModel, 500, temperature);
+        AsyncLLMClient baseGemini = new AsyncGeminiClient(geminiApiKey, geminiModel, maxTokens, temperature);
 
         // Wrap with resilience patterns
         this.asyncOpenAIClient = new ResilientLLMClient(baseOpenAI, llmCache, fallbackHandler);
         this.asyncGroqClient = new ResilientLLMClient(baseGroq, llmCache, fallbackHandler);
         this.asyncGeminiClient = new ResilientLLMClient(baseGemini, llmCache, fallbackHandler);
 
-        SteveMod.LOGGER.info("TaskPlanner initialized with async resilient clients");
+        SteveMod.LOGGER.info("TaskPlanner initialized with async resilient clients " +
+            "(providers: openai={}, groq={}, gemini={})",
+            baseOpenAI.isHealthy() ? "configured" : "unconfigured",
+            baseGroq.isHealthy() ? "configured" : "unconfigured",
+            baseGemini.isHealthy() ? "configured" : "unconfigured");
     }
 
     public ResponseParser.ParsedResponse planTasks(SteveEntity steve, String command) {
@@ -130,10 +138,17 @@ public class TaskPlanner {
             SteveMod.LOGGER.info("[Async] Requesting AI plan for Steve '{}' using {}: {}",
                 steve.getSteveName(), provider, command);
 
-            // Build params map
+            // Build params map with provider-specific model
+            String modelForProvider = switch (provider) {
+                case "openai" -> SteveConfig.OPENAI_MODEL.get();
+                case "groq" -> SteveConfig.GROQ_MODEL.get();
+                case "gemini" -> SteveConfig.GEMINI_MODEL.get();
+                default -> SteveConfig.GROQ_MODEL.get();
+            };
+
             Map<String, Object> params = Map.of(
                 "systemPrompt", systemPrompt,
-                "model", SteveConfig.OPENAI_MODEL.get(),
+                "model", modelForProvider,
                 "maxTokens", SteveConfig.MAX_TOKENS.get(),
                 "temperature", SteveConfig.TEMPERATURE.get()
             );
