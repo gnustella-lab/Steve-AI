@@ -160,7 +160,8 @@ gradle wrapper --gradle-version 8.4
 JAVA_HOME=/path/to/jdk17 ./gradlew build
 ```
 
-Output JAR will be in `build/libs/`. To test in development:
+Install `build/libs/steve-ai-mod-<version>.jar`, which includes all required runtime libraries. The
+`-slim.jar` artifact is only for development and will not load by itself in Minecraft. To test in development:
 
 ```bash
 JAVA_HOME=/path/to/jdk17 gradle runClient

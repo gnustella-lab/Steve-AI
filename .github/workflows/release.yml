@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag to create/update (for example, v1.5.0)'
+        description: 'Release tag to create/update (for example, v1.5.1)'
         required: true
         type: string
 
@@ -65,9 +65,9 @@ jobs:
             tag_name="${{ inputs.tag_name }}"
           fi
 
-          jar_path="$(find build/libs -maxdepth 1 -type f -name '*-all.jar' | sort | head -n 1)"
-          if [ -z "${jar_path}" ]; then
-            echo "No JAR was produced under build/libs" >&2
+          jar_path="build/libs/steve-ai-mod-${tag_name#v}.jar"
+          if [ ! -f "${jar_path}" ]; then
+            echo "Installable JAR was not produced at ${jar_path}" >&2
             exit 1
           fi
 

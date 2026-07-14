@@ -5,7 +5,7 @@ plugins {
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
 }
 
-version = (findProperty('mod_version') ?: '1.5.0').toString().replaceFirst('^v', '')
+version = (findProperty('mod_version') ?: '1.5.1').toString().replaceFirst('^v', '')
 group = 'com.steve.ai'
 
 base {
@@ -132,6 +132,8 @@ processResources {
 }
 
 tasks.named('jar', Jar).configure {
+    archiveClassifier = 'slim'
+
     manifest {
         attributes([
             'Specification-Title': 'Steve AI Mod',
@@ -146,10 +148,62 @@ tasks.named('jar', Jar).configure {
     finalizedBy 'reobfJar'
 }
 
+tasks.named('jarJar', Jar).configure {
+    archiveClassifier = ''
+}
+
+def requiredRuntimeJars = [
+    'caffeine-3.1.8.jar',
+    'resilience4j-core-2.1.0.jar',
+    'resilience4j-circuitbreaker-2.1.0.jar',
+    'resilience4j-retry-2.1.0.jar',
+    'resilience4j-ratelimiter-2.1.0.jar',
+    'resilience4j-bulkhead-2.1.0.jar'
+]
+
+tasks.register('verifyReleaseJar') {
+    group = 'verification'
+    description = 'Verifies that the main distributable JAR contains all runtime libraries.'
+    dependsOn 'reobfJarJar'
+
+    doLast {
+        def releaseJar = tasks.named('jarJar', Jar).get().archiveFile.get().asFile
+        def expectedName = "${base.archivesName.get()}-${project.version}.jar"
+        if (releaseJar.name != expectedName) {
+            throw new GradleException(
+                "The installable mod must be ${expectedName}, but Jar-in-Jar produced ${releaseJar.name}"
+            )
+        }
+
+        def entries = [] as Set
+        def zip = new java.util.zip.ZipFile(releaseJar)
+        try {
+            zip.entries().each { entries.add(it.name) }
+        } finally {
+            zip.close()
+        }
+
+        def requiredEntries = requiredRuntimeJars.collect { "META-INF/jarjar/${it}".toString() }
+        requiredEntries.add('META-INF/jarjar/metadata.json')
+        def missingEntries = requiredEntries.findAll { !entries.contains(it) }
+        if (!missingEntries.isEmpty()) {
+            def foundEntries = entries.findAll { it.startsWith('META-INF/jarjar/') }
+            throw new GradleException(
+                "Release JAR ${releaseJar} is missing runtime entries: ${missingEntries.join(', ')}; " +
+                    "found: ${foundEntries.join(', ')}"
+            )
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn 'verifyReleaseJar'
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            artifact jar
+            artifact tasks.named('jarJar')
         }
     }
     repositories {

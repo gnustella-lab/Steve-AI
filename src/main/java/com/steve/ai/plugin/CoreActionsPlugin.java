@@ -31,7 +31,7 @@ public class CoreActionsPlugin implements ActionPlugin {
     private static final Logger LOGGER = LoggerFactory.getLogger(CoreActionsPlugin.class);
 
     private static final String PLUGIN_ID = "core-actions";
-    private static final String VERSION = "1.5.0";
+    private static final String VERSION = "1.5.1";
 
     @Override
     public String getPluginId() {

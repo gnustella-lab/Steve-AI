@@ -1,79 +1,30 @@
-Steve AI 1.5.0
+Steve AI 1.5.1 Packaging Hotfix
 
-This release focuses on reliability, safer AI actions, multiplayer behavior, and Forge packaging.
+This hotfix corrects the production artifact that caused Minecraft to crash while loading Steve AI.
 
-Highlights
+Fixed
 
-- AI planning no longer blocks the Minecraft server thread.
-- New commands replace outdated plans, and stopped plans cannot resume later.
-- LLM responses are parsed and validated before any Minecraft action runs.
-- Procedural structure building works again when no NBT template is available.
-- Collaborative builds now distribute work correctly, avoid duplicate block claims, and stay isolated by dimension.
-- The release JAR now includes the Caffeine and Resilience4j libraries required at runtime.
+- Fixed the startup crash caused by the Caffeine runtime library being absent from the installed mod JAR.
+- The complete Forge Jar-in-Jar artifact is now produced as `steve-ai-mod-1.5.1.jar`.
+- The dependency-free development artifact is now clearly named `steve-ai-mod-1.5.1-slim.jar` and must not be installed in Minecraft.
+- Maven publishing now uses the complete Jar-in-Jar artifact instead of the slim JAR.
+- The GitHub release workflow now selects the exact installable JAR instead of relying on a filename glob.
 
-Gameplay and action fixes
+Build safeguards
 
-- Added strict validation for action names, coordinates, quantities, block lists, and structure dimensions.
-- Protected regions are now respected when mining, placing blocks, building structures, and placing mining torches.
-- Mining only counts blocks that Minecraft successfully destroyed.
-- Tunnel mining no longer removes the floor below Steve.
-- Resource gathering now delegates to the real mining action instead of returning a placeholder result.
-- The unfinished crafting action is no longer exposed as a supported AI action.
-- Combat now attacks at the intended rate instead of applying damage every tick.
-- Pathfinding, following, and block placement stop navigation cleanly after a timeout.
-- Action failures are contained so one broken action cannot break Steve's entire tick loop.
-- Action interceptors now receive start, completion, and failure events.
+- Added a `verifyReleaseJar` Gradle task that checks the installable filename and required runtime contents.
+- Release verification now fails if Caffeine, Resilience4j, or Jar-in-Jar metadata is missing.
+- Updated the build and release documentation to distinguish the installable and development artifacts.
 
-Structures
+Verification
 
-- Fixed a bug that prevented all procedural structures from being generated.
-- Collaborative construction can now be completed by a single Steve across every build section.
-- Cancelled, failed, and timed-out builds release their shared state correctly.
-- Completed structures are registered only after every block has been processed.
-- Structure templates preserve block-state properties such as door halves and orientation data.
-- External NBT templates can be loaded from the structures directory.
-- Invalid template names are rejected to prevent unsafe file paths.
-- Generated houses now place valid upper and lower door blocks.
+- Clean Gradle build completed successfully.
+- 22 JUnit tests passed with no failures, errors, or skipped tests.
+- The dedicated Forge GameTest server passed its required test.
+- The LLM cache initialized successfully during the Forge runtime test.
+- The final installable JAR contains Caffeine 3.1.8 and all five required Resilience4j 2.1.0 modules.
 
-Server and multiplayer
+Installation
 
-- Removed client-only GUI references from common server code.
-- Client GUI registration now happens exclusively during client setup.
-- Steve entities are reconciled with the manager after world and chunk loading.
-- Steve names are validated, case-insensitive, and limited to command-safe characters.
-- Duplicate names and failed entity spawns no longer leave stale manager entries.
-- Steve action executors are created lazily after persisted names are loaded.
-- Event-bus executors are shut down when their Steve entity is removed.
-- Commands that spawn, remove, stop, or direct a Steve now require operator permission level 2.
-
-AI provider reliability
-
-- Fixed asynchronous retry handling so failed futures are retried correctly.
-- Cache keys now include request parameters, preventing responses with different settings from colliding.
-- Replaced the external SHA-256 helper with Java's built-in implementation.
-- Improved fallback intent matching and removed unsafe default actions for unknown requests.
-- Gemini API keys are sent through the x-goog-api-key header instead of the request URL.
-- Improved handling of malformed, fenced, nested, or partially invalid JSON responses.
-
-Client fixes
-
-- Fixed duplicate GUI ticking when the overlay screen was open.
-- The GUI now reads Steve entities from the client world instead of server-only singleton state.
-- GUI commands are sent through the normal client-to-server command connection.
-
-Packaging and compatibility
-
-- Added ForgeGradle Jar-in-Jar metadata and embedded runtime dependencies.
-- Added the missing Gradle wrapper JAR so ./gradlew works from a fresh clone.
-- Release builds can receive their version from the Git tag.
-- Tightened metadata compatibility to Minecraft 1.20.1 and Forge 47.x.
-- Updated the example token limit to match the runtime default of 8,000 tokens.
-
-Tests
-
-- Added regression coverage for LLM response parsing, fallback behavior, retries, task validation, collaborative construction, and event-bus inheritance.
-- Current test result: 20 tests passed, 0 failed.
-
-Known limitation
-
-- Crafting is not implemented in this release and is intentionally rejected instead of reporting false success.
+Install `build/libs/steve-ai-mod-1.5.1.jar`.
+Do not install `build/libs/steve-ai-mod-1.5.1-slim.jar`.
