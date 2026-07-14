@@ -39,7 +39,7 @@ import java.util.concurrent.CompletableFuture;
  * <p><b>API Format Differences:</b></p>
  * <ul>
  *   <li>Uses "contents" array with "parts" (not "messages")</li>
- *   <li>API key in query string (not Authorization header)</li>
+ *   <li>API key in the x-goog-api-key header</li>
  *   <li>Response in "candidates[].content.parts[].text"</li>
  * </ul>
  *
@@ -96,11 +96,12 @@ public class AsyncGeminiClient implements AsyncLLMClient {
         long startTime = System.currentTimeMillis();
 
         String requestBody = buildRequestBody(prompt, params);
-        String urlWithKey = GEMINI_API_BASE + model + ":generateContent?key=" + apiKey;
+        String endpoint = GEMINI_API_BASE + model + ":generateContent";
 
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(urlWithKey))
+            .uri(URI.create(endpoint))
             .header("Content-Type", "application/json")
+            .header("x-goog-api-key", apiKey)
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .timeout(Duration.ofSeconds(60)) // Gemini can be slower
             .build();
@@ -167,8 +168,8 @@ public class AsyncGeminiClient implements AsyncLLMClient {
 
         // Generation config
         JsonObject generationConfig = new JsonObject();
-        double tempToUse = (double) params.getOrDefault("temperature", this.temperature);
-        int maxTokensToUse = (int) params.getOrDefault("maxTokens", this.maxTokens);
+        double tempToUse = ((Number) params.getOrDefault("temperature", this.temperature)).doubleValue();
+        int maxTokensToUse = ((Number) params.getOrDefault("maxTokens", this.maxTokens)).intValue();
 
         generationConfig.addProperty("temperature", tempToUse);
         generationConfig.addProperty("maxOutputTokens", maxTokensToUse);

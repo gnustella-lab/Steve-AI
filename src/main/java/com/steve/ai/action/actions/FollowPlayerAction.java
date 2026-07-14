@@ -34,6 +34,7 @@ public class FollowPlayerAction extends BaseAction {
         ticksRunning++;
         
         if (ticksRunning > MAX_TICKS) {
+            steve.getNavigation().stop();
             result = ActionResult.success("Stopped following");
             return;
         }
@@ -61,7 +62,8 @@ public class FollowPlayerAction extends BaseAction {
 
     @Override
     public String getDescription() {
-        return "Follow player " + playerName;
+        return "Follow player "
+            + (playerName != null ? playerName : task.getStringParameter("player"));
     }
 
     private void findPlayer() {

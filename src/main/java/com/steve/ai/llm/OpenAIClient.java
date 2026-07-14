@@ -21,7 +21,7 @@ public class OpenAIClient {
     private final String apiKey;
 
     public OpenAIClient() {
-        this.apiKey = SteveConfig.OPENAI_API_KEY.get();
+        this.apiKey = SteveConfig.getOpenAIApiKey();
         this.client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
             .build();

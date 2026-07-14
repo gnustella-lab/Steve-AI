@@ -1,36 +1,39 @@
 package com.steve.ai.client;
 
-import com.steve.ai.SteveMod;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.NarratorStatus;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * Handles client-side events, including disabling the narrator and checking key presses
- */
+/** Handles client-side key presses and GUI animation. */
 @Mod.EventBusSubscriber(modid = "steve", bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public class ClientEventHandler {
-    
-    private static boolean narratorDisabled = false;
-    
+
+    @SubscribeEvent
+    public static void onChatMessage(ClientChatReceivedEvent event) {
+        String message = event.getMessage().getString();
+        int nameEnd = message.indexOf("> ");
+        if (!message.startsWith("<") || nameEnd <= 1) {
+            return;
+        }
+
+        String sender = message.substring(1, nameEnd);
+        if (SteveGUI.isKnownSteve(sender)) {
+            SteveGUI.addSteveMessage(sender, message.substring(nameEnd + 2));
+        }
+    }
+
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
-        
-        Minecraft mc = Minecraft.getInstance();
-        
-        if (!narratorDisabled && mc.options != null) {
-            mc.options.narrator().set(NarratorStatus.OFF);
-            mc.options.save();
-            narratorDisabled = true;
-        }
-        
-        if (KeyBindings.TOGGLE_GUI != null && KeyBindings.TOGGLE_GUI.consumeClick()) {            SteveGUI.toggle();
+
+        SteveGUI.tick();
+
+        while (KeyBindings.TOGGLE_GUI != null && KeyBindings.TOGGLE_GUI.consumeClick()) {
+            SteveGUI.toggle();
         }
     }
 }

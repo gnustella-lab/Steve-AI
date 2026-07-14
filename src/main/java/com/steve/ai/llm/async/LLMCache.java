@@ -3,10 +3,13 @@ package com.steve.ai.llm.async;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -154,7 +157,13 @@ public class LLMCache {
      */
     private String generateKey(String prompt, String model, String providerId) {
         String composite = providerId + ":" + model + ":" + prompt;
-        return DigestUtils.sha256Hex(composite);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(composite.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     /**

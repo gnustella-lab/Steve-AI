@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag to create/update (for example, v1.0.0)'
+        description: 'Release tag to create/update (for example, v1.5.0)'
         required: true
         type: string
 
@@ -35,7 +35,25 @@ jobs:
           gradle-version: '8.4'
 
       - name: Build release jar
-        run: gradle clean build --stacktrace
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_name="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag_name="${{ inputs.tag_name }}"
+          fi
+          ./gradlew clean build --stacktrace -Pmod_version="${tag_name#v}"
+
+      - name: Verify dedicated server runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_name="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag_name="${{ inputs.tag_name }}"
+          fi
+          ./gradlew runGameTestServer --stacktrace -Pmod_version="${tag_name#v}" | tee gametest.log
+          grep -E "All [1-9][0-9]* required tests passed" gametest.log
 
       - name: Resolve release metadata
         id: release_metadata
@@ -47,7 +65,7 @@ jobs:
             tag_name="${{ inputs.tag_name }}"
           fi
 
-          jar_path="$(find build/libs -maxdepth 1 -type f -name '*.jar' | sort | head -n 1)"
+          jar_path="$(find build/libs -maxdepth 1 -type f -name '*-all.jar' | sort | head -n 1)"
           if [ -z "${jar_path}" ]; then
             echo "No JAR was produced under build/libs" >&2
             exit 1

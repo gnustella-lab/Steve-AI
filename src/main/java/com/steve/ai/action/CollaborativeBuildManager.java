@@ -7,6 +7,7 @@ import net.minecraft.world.level.block.Block;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -16,6 +17,8 @@ public class CollaborativeBuildManager {
     
     public static class CollaborativeBuild {
         public final String structureId;
+        public final String structureType;
+        public final String dimensionId;
         public final List<BlockPlacement> buildPlan;
         private final List<BuildSection> sections;
         private final Map<String, Integer> steveToSectionMap;
@@ -24,7 +27,14 @@ public class CollaborativeBuildManager {
         public final BlockPos startPos;
         
         public CollaborativeBuild(String structureId, List<BlockPlacement> buildPlan, BlockPos startPos) {
+            this(structureId, structureId, "unknown", buildPlan, startPos);
+        }
+
+        private CollaborativeBuild(String structureId, String structureType, String dimensionId,
+                List<BlockPlacement> buildPlan, BlockPos startPos) {
             this.structureId = structureId;
+            this.structureType = structureType;
+            this.dimensionId = dimensionId;
             this.buildPlan = buildPlan;
             this.participatingSteves = ConcurrentHashMap.newKeySet();
             this.startPos = startPos;
@@ -117,6 +127,9 @@ public class CollaborativeBuildManager {
         }
         
         public int getProgressPercentage() {
+            if (buildPlan.isEmpty()) {
+                return 100;
+            }
             return (getBlocksPlaced() * 100) / buildPlan.size();
         }
     }
@@ -128,29 +141,37 @@ public class CollaborativeBuildManager {
         public final int yLevel; // Used as section ID
         public final String sectionName;
         private final List<BlockPlacement> blocks;
-        private final AtomicInteger nextBlockIndex;
+        private final Queue<BlockPlacement> pendingBlocks;
+        private final AtomicInteger blocksPlaced;
         
         public BuildSection(int sectionId, List<BlockPlacement> blocks, String sectionName) {
             this.yLevel = sectionId;
             this.sectionName = sectionName;
-            this.blocks = blocks;
-            this.nextBlockIndex = new AtomicInteger(0);
+            this.blocks = List.copyOf(blocks);
+            this.pendingBlocks = new ConcurrentLinkedQueue<>(blocks);
+            this.blocksPlaced = new AtomicInteger(0);
         }
         
         public BlockPlacement getNextBlock() {
-            int index = nextBlockIndex.getAndIncrement();
-            if (index < blocks.size()) {
-                return blocks.get(index);
+            return pendingBlocks.poll();
+        }
+
+        public void markBlockPlaced() {
+            blocksPlaced.updateAndGet(current -> Math.min(current + 1, blocks.size()));
+        }
+
+        public void returnBlock(BlockPlacement block) {
+            if (block != null) {
+                pendingBlocks.offer(block);
             }
-            return null;
         }
         
         public int getBlocksPlaced() {
-            return Math.min(nextBlockIndex.get(), blocks.size());
+            return blocksPlaced.get();
         }
         
         public boolean isComplete() {
-            return nextBlockIndex.get() >= blocks.size();
+            return blocksPlaced.get() >= blocks.size();
         }
         
         public int getTotalBlocks() {
@@ -164,8 +185,14 @@ public class CollaborativeBuildManager {
      * Register a new collaborative build project
      */
     public static CollaborativeBuild registerBuild(String structureType, List<BlockPlacement> buildPlan, BlockPos startPos) {
-        String structureId = structureType + "_" + System.currentTimeMillis();
-        CollaborativeBuild build = new CollaborativeBuild(structureId, buildPlan, startPos);
+        return registerBuild(structureType, buildPlan, startPos, "unknown");
+    }
+
+    public static CollaborativeBuild registerBuild(String structureType, List<BlockPlacement> buildPlan,
+            BlockPos startPos, String dimensionId) {
+        String structureId = structureType + "_" + UUID.randomUUID();
+        CollaborativeBuild build = new CollaborativeBuild(
+            structureId, structureType, dimensionId, buildPlan, startPos);
         activeBuilds.put(structureId, build);
         
         SteveMod.LOGGER.info("Registered collaborative build '{}' at {} with {} blocks", 
@@ -185,28 +212,52 @@ public class CollaborativeBuildManager {
         
         build.participatingSteves.add(steveName);
         
-        // Assign Steve to a section if not already assigned
-        Integer sectionIndex = build.steveToSectionMap.get(steveName);
-        if (sectionIndex == null) {
-            sectionIndex = assignSteveToSection(build, steveName);
+        // Ao terminar um quadrante, o mesmo Steve assume outro trabalho pendente.
+        for (int attempt = 0; attempt < build.sections.size(); attempt++) {
+            Integer sectionIndex = build.steveToSectionMap.get(steveName);
             if (sectionIndex == null) {
-                // No sections available
-                return null;
+                sectionIndex = assignSteveToSection(build, steveName);
+                if (sectionIndex == null) {
+                    return null;
+                }
             }
-        }
-        
-        BuildSection section = build.sections.get(sectionIndex);
-        BlockPlacement block = section.getNextBlock();
-        
-        if (block == null) {
-            if (sectionIndex != null) {
-                section = build.sections.get(sectionIndex);
-                block = section.getNextBlock();
-                if (block != null) {                }
+
+            BuildSection section = build.sections.get(sectionIndex);
+            BlockPlacement block = section.getNextBlock();
+            if (block != null) {
+                return block;
             }
+
+            build.steveToSectionMap.remove(steveName, sectionIndex);
         }
-        
-        return block;
+
+        return null;
+    }
+
+    public static void markBlockPlaced(CollaborativeBuild build, String steveName) {
+        Integer sectionIndex = build.steveToSectionMap.get(steveName);
+        if (sectionIndex != null) {
+            build.sections.get(sectionIndex).markBlockPlaced();
+        }
+    }
+
+    public static void returnBlock(
+            CollaborativeBuild build, String steveName, BlockPlacement placement) {
+        Integer sectionIndex = build.steveToSectionMap.get(steveName);
+        if (sectionIndex != null) {
+            build.sections.get(sectionIndex).returnBlock(placement);
+        }
+    }
+
+    public static void abandonBuild(CollaborativeBuild build, String steveName) {
+        if (build == null || steveName == null) {
+            return;
+        }
+        build.steveToSectionMap.remove(steveName);
+        build.participatingSteves.remove(steveName);
+        if (build.participatingSteves.isEmpty()) {
+            activeBuilds.remove(build.structureId, build);
+        }
     }
     
     /**
@@ -255,24 +306,38 @@ public class CollaborativeBuildManager {
     /**
      * Complete and remove a build
      */
-    public static void completeBuild(String structureId) {
+    public static boolean completeBuild(String structureId) {
         CollaborativeBuild build = activeBuilds.remove(structureId);
         if (build != null) {
             SteveMod.LOGGER.info("Collaborative build '{}' completed by {} Steves", 
                 structureId, build.participatingSteves.size());
+            return true;
         }
+        return false;
     }
     
     /**
      * Check if there's an active build of a structure type
      */
     public static CollaborativeBuild findActiveBuild(String structureType) {
-        for (CollaborativeBuild build : activeBuilds.values()) {
-            if (build.structureId.startsWith(structureType) && !build.isComplete()) {
-                return build;
-            }
-        }
-        return null;
+        return findActiveBuild(structureType, null);
+    }
+
+    public static CollaborativeBuild findActiveBuild(String structureType, String dimensionId) {
+        return findActiveBuild(structureType, dimensionId, null, Double.POSITIVE_INFINITY);
+    }
+
+    public static CollaborativeBuild findActiveBuild(String structureType, String dimensionId,
+            BlockPos origin, double maxDistance) {
+        double maxDistanceSquared = maxDistance * maxDistance;
+        return activeBuilds.values().stream()
+            .filter(build -> build.structureType.equalsIgnoreCase(structureType))
+            .filter(build -> dimensionId == null || Objects.equals(build.dimensionId, dimensionId))
+            .filter(build -> !build.isComplete())
+            .filter(build -> origin == null || build.startPos.distSqr(origin) <= maxDistanceSquared)
+            .min(Comparator.comparingDouble(build -> origin == null
+                ? 0.0 : build.startPos.distSqr(origin)))
+            .orElse(null);
     }
     
     /**
@@ -280,6 +345,10 @@ public class CollaborativeBuildManager {
      */
     public static void cleanupCompletedBuilds() {
         activeBuilds.entrySet().removeIf(entry -> entry.getValue().isComplete());
+    }
+
+    public static void clearAllBuilds() {
+        activeBuilds.clear();
     }
 }
 

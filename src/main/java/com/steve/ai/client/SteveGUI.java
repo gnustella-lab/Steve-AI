@@ -1,7 +1,6 @@
 package com.steve.ai.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.steve.ai.SteveMod;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -121,6 +120,11 @@ public class SteveGUI {
         addMessage(steveName, text, STEVE_BUBBLE_COLOR, false);
     }
 
+    public static boolean isKnownSteve(String name) {
+        return name != null && getClientSteves().stream()
+            .anyMatch(steve -> steve.getSteveName().equalsIgnoreCase(name));
+    }
+
     /**
      * Add a system message to the history
      */
@@ -130,8 +134,8 @@ public class SteveGUI {
 
     @SubscribeEvent
     public static void onRenderOverlay(RenderGuiOverlayEvent.Post event) {
-        if (event.getOverlay().id().toString().contains("hotbar")) {
-            return; // Don't render over hotbar
+        if (!event.getOverlay().id().toString().contains("hotbar")) {
+            return; // Renderiza uma única vez por frame, depois da hotbar.
         }
 
         Minecraft mc = Minecraft.getInstance();
@@ -390,6 +394,10 @@ public class SteveGUI {
         if (command.toLowerCase().startsWith("spawn ")) {
             String name = command.substring(6).trim();
             if (name.isEmpty()) name = "Steve";
+            if (!name.matches("[A-Za-z0-9_-]{1,32}")) {
+                addSystemMessage("Agent names may only contain letters, numbers, '_' or '-' (max 32).");
+                return;
+            }
             if (mc.player != null) {
                 mc.player.connection.sendCommand("steve spawn " + name);
                 addSystemMessage("Spawning Steve agent: " + name);
@@ -400,9 +408,9 @@ public class SteveGUI {
         List<String> targetSteves = parseTargetSteves(command);
         
         if (targetSteves.isEmpty()) {
-            var steves = SteveMod.getSteveManager().getAllSteves();
+            var steves = getClientSteves();
             if (!steves.isEmpty()) {
-                targetSteves.add(steves.iterator().next().getSteveName());
+                targetSteves.add(steves.get(0).getSteveName());
             } else {
                 // No Steves available
                 addSystemMessage("No Steve agents found! Use 'spawn <name>' to create one.");
@@ -430,14 +438,14 @@ public class SteveGUI {
         
         if (commandLower.startsWith("all steves ") || commandLower.startsWith("all ") || 
             commandLower.startsWith("everyone ") || commandLower.startsWith("everybody ")) {
-            var allSteves = SteveMod.getSteveManager().getAllSteves();
+            var allSteves = getClientSteves();
             for (SteveEntity steve : allSteves) {
                 targets.add(steve.getSteveName());
             }
             return targets;
         }
         
-        var allSteves = SteveMod.getSteveManager().getAllSteves();
+        var allSteves = getClientSteves();
         List<String> availableNames = new ArrayList<>();
         for (SteveEntity steve : allSteves) {
             availableNames.add(steve.getSteveName().toLowerCase());
@@ -459,6 +467,21 @@ public class SteveGUI {
         }
         
         return targets;
+    }
+
+    private static List<SteveEntity> getClientSteves() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return List.of();
+        }
+
+        List<SteveEntity> steves = new ArrayList<>();
+        for (var entity : mc.level.entitiesForRendering()) {
+            if (entity instanceof SteveEntity steve) {
+                steves.add(steve);
+            }
+        }
+        return steves;
     }
 
     public static void tick() {

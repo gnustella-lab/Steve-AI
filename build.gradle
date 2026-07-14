@@ -5,7 +5,7 @@ plugins {
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
 }
 
-version = '1.0.0'
+version = (findProperty('mod_version') ?: '1.5.0').toString().replaceFirst('^v', '')
 group = 'com.steve.ai'
 
 base {
@@ -13,6 +13,9 @@ base {
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+// Dependências externas precisam viajar dentro do mod de produção.
+jarJar.enable()
 
 minecraft {
     mappings channel: 'official', version: '1.20.1'
@@ -41,6 +44,18 @@ minecraft {
                 }
             }
         }
+
+        gameTestServer {
+            workingDirectory project.file('run-gametest')
+            property 'forge.enabledGameTestNamespaces', 'steve'
+            property 'forge.logging.console.level', 'info'
+
+            mods {
+                steve {
+                    source sourceSets.main
+                }
+            }
+        }
     }
 }
 
@@ -56,21 +71,45 @@ dependencies {
     // HTTP client - Using Java 11+ built-in HttpClient (no external dependencies needed!)
     // JSON parsing - Minecraft already includes Gson
 
-    // GraalVM for JavaScript code execution engine
-    implementation 'org.graalvm.polyglot:polyglot:23.1.0'
-    implementation 'org.graalvm.polyglot:js:23.1.0'
-
     // Resilience4j for fault tolerance (circuit breaker, retry, rate limiting, bulkhead)
     implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.1.0'
     implementation 'io.github.resilience4j:resilience4j-retry:2.1.0'
     implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.1.0'
     implementation 'io.github.resilience4j:resilience4j-bulkhead:2.1.0'
+    minecraftLibrary 'io.github.resilience4j:resilience4j-circuitbreaker:2.1.0'
+    minecraftLibrary 'io.github.resilience4j:resilience4j-retry:2.1.0'
+    minecraftLibrary 'io.github.resilience4j:resilience4j-ratelimiter:2.1.0'
+    minecraftLibrary 'io.github.resilience4j:resilience4j-bulkhead:2.1.0'
+
+    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-core', version: '[2.1.0,2.2.0)') {
+        transitive = false
+        jarJar.pin(it, '2.1.0')
+    }
+    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-circuitbreaker', version: '[2.1.0,2.2.0)') {
+        transitive = false
+        jarJar.pin(it, '2.1.0')
+    }
+    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-retry', version: '[2.1.0,2.2.0)') {
+        transitive = false
+        jarJar.pin(it, '2.1.0')
+    }
+    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-ratelimiter', version: '[2.1.0,2.2.0)') {
+        transitive = false
+        jarJar.pin(it, '2.1.0')
+    }
+    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-bulkhead', version: '[2.1.0,2.2.0)') {
+        transitive = false
+        jarJar.pin(it, '2.1.0')
+    }
 
     // Caffeine cache for LLM response caching
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    minecraftLibrary 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    jarJar(group: 'com.github.ben-manes.caffeine', name: 'caffeine', version: '[3.1.8,3.2.0)') {
+        transitive = false
+        jarJar.pin(it, '3.1.8')
+    }
 
-    // Apache Commons for SHA-256 hashing (cache keys)
-    implementation 'commons-codec:commons-codec:1.16.0'
 
     // JUnit 5 for testing
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
@@ -83,6 +122,13 @@ test {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+processResources {
+    inputs.property 'mod_version', project.version
+    filesMatching('META-INF/mods.toml') {
+        expand mod_version: project.version
+    }
 }
 
 tasks.named('jar', Jar).configure {

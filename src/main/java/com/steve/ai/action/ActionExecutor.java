@@ -51,7 +51,7 @@ public class ActionExecutor {
     private final ActionContext actionContext;
     private final InterceptorChain interceptorChain;
     private final AgentStateMachine stateMachine;
-    private final EventBus eventBus;
+    private final SimpleEventBus eventBus;
 
     public ActionExecutor(SteveEntity steve) {
         this.steve = steve;
@@ -73,7 +73,10 @@ public class ActionExecutor {
         interceptorChain.addInterceptor(new EventPublishingInterceptor(eventBus, steve.getSteveName()));
 
         // Build action context
-        ServiceContainer container = new SimpleServiceContainer();
+        ServiceContainer container = SteveMod.getServiceContainer();
+        if (container == null) {
+            container = new SimpleServiceContainer();
+        }
         this.actionContext = ActionContext.builder()
             .serviceContainer(container)
             .eventBus(eventBus)
@@ -113,18 +116,25 @@ public class ActionExecutor {
     public void processNaturalLanguageCommand(String command) {
         SteveMod.LOGGER.info("Steve '{}' processing command (async): {}", steve.getSteveName(), command);
 
-        // If already planning, ignore new commands
-        if (isPlanning) {
-            SteveMod.LOGGER.warn("Steve '{}' is already planning, ignoring command: {}", steve.getSteveName(), command);
-            sendToGUI(steve.getSteveName(), "Hold on, I'm still thinking about the previous command...");
+        if (command == null || command.isBlank()) {
+            sendToGUI(steve.getSteveName(), "Please provide a command.");
             return;
         }
 
-        // Cancel any current actions
-        if (currentAction != null) {
-            currentAction.cancel();
-            currentAction = null;
+        // A newer command supersedes any plan still in flight.
+        if (isPlanning) {
+            SteveMod.LOGGER.info("Steve '{}' replacing the pending plan with a newer command",
+                steve.getSteveName());
+            if (planningFuture != null) {
+                planningFuture.cancel(true);
+            }
+            planningFuture = null;
+            pendingCommand = null;
+            isPlanning = false;
         }
+
+        // Cancel any current actions
+        cancelCurrentAction();
 
         if (idleFollowAction != null) {
             idleFollowAction.cancel();
@@ -133,6 +143,11 @@ public class ActionExecutor {
 
         try {
             // Store command and start async planning
+            // Uma nova ordem substitui integralmente o plano anterior.
+            taskQueue.clear();
+            clearCurrentGoal();
+            stateMachine.reset();
+            stateMachine.transitionTo(AgentState.PLANNING, "new command");
             this.pendingCommand = command;
             this.isPlanning = true;
 
@@ -145,11 +160,13 @@ public class ActionExecutor {
             SteveMod.LOGGER.info("Steve '{}' started async planning for: {}", steve.getSteveName(), command);
 
         } catch (NoClassDefFoundError e) {
+            failAndResetState("AI components unavailable");
             SteveMod.LOGGER.error("Failed to initialize AI components", e);
             sendToGUI(steve.getSteveName(), "Sorry, I'm having trouble with my AI systems!");
             isPlanning = false;
             planningFuture = null;
         } catch (Exception e) {
+            failAndResetState("planning startup failed");
             SteveMod.LOGGER.error("Error starting async planning", e);
             sendToGUI(steve.getSteveName(), "Oops, something went wrong!");
             isPlanning = false;
@@ -170,10 +187,7 @@ public class ActionExecutor {
     public void processNaturalLanguageCommandSync(String command) {
         SteveMod.LOGGER.info("Steve '{}' processing command (SYNC - blocking!): {}", steve.getSteveName(), command);
 
-        if (currentAction != null) {
-            currentAction.cancel();
-            currentAction = null;
-        }
+        cancelCurrentAction();
 
         if (idleFollowAction != null) {
             idleFollowAction.cancel();
@@ -181,24 +195,24 @@ public class ActionExecutor {
         }
 
         try {
+            stateMachine.reset();
+            stateMachine.transitionTo(AgentState.PLANNING, "synchronous command");
             // BLOCKING CALL - freezes game for 30-60 seconds!
             ResponseParser.ParsedResponse response = getTaskPlanner().planTasks(steve, command);
 
             if (response == null) {
+                failAndResetState("planner returned no response");
                 sendToGUI(steve.getSteveName(), "I couldn't understand that command.");
                 return;
             }
 
-            currentGoal = response.getPlan();
-            steve.getMemory().setCurrentGoal(currentGoal);
+            applyPlan(response);
 
-            taskQueue.clear();
-            taskQueue.addAll(response.getTasks());
-
-            if (SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
+            if (SteveConfig.ENABLE_CHAT_RESPONSES.get() && !taskQueue.isEmpty()) {
                 sendToGUI(steve.getSteveName(), "Okay! " + currentGoal);
             }
         } catch (NoClassDefFoundError e) {
+            failAndResetState("AI components unavailable");
             SteveMod.LOGGER.error("Failed to initialize AI components", e);
             sendToGUI(steve.getSteveName(), "Sorry, I'm having trouble with my AI systems!");
         }
@@ -206,12 +220,10 @@ public class ActionExecutor {
         SteveMod.LOGGER.info("Steve '{}' queued {} tasks", steve.getSteveName(), taskQueue.size());
     }
     
-    /**
-     * Send a message to the GUI pane (client-side only, no chat spam)
-     */
+    /** Envia feedback pelo chat do servidor quando habilitado. */
     private void sendToGUI(String steveName, String message) {
-        if (steve.level().isClientSide) {
-            com.steve.ai.client.SteveGUI.addSteveMessage(steveName, message);
+        if (!steve.level().isClientSide && SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
+            steve.sendChatMessage(message);
         }
     }
 
@@ -224,27 +236,26 @@ public class ActionExecutor {
                 ResponseParser.ParsedResponse response = planningFuture.get();
 
                 if (response != null) {
-                    currentGoal = response.getPlan();
-                    steve.getMemory().setCurrentGoal(currentGoal);
+                    applyPlan(response);
 
-                    taskQueue.clear();
-                    taskQueue.addAll(response.getTasks());
-
-                    if (SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
+                    if (SteveConfig.ENABLE_CHAT_RESPONSES.get() && !taskQueue.isEmpty()) {
                         sendToGUI(steve.getSteveName(), "Okay! " + currentGoal);
                     }
 
                     SteveMod.LOGGER.info("Steve '{}' async planning complete: {} tasks queued",
                         steve.getSteveName(), taskQueue.size());
                 } else {
+                    failAndResetState("planner returned no response");
                     sendToGUI(steve.getSteveName(), "I couldn't understand that command.");
                     SteveMod.LOGGER.warn("Steve '{}' async planning returned null response", steve.getSteveName());
                 }
 
             } catch (java.util.concurrent.CancellationException e) {
+                stateMachine.reset();
                 SteveMod.LOGGER.info("Steve '{}' planning was cancelled", steve.getSteveName());
                 sendToGUI(steve.getSteveName(), "Planning cancelled.");
             } catch (Exception e) {
+                failAndResetState("planning failed");
                 SteveMod.LOGGER.error("Steve '{}' failed to get planning result", steve.getSteveName(), e);
                 sendToGUI(steve.getSteveName(), "Oops, something went wrong while planning!");
             } finally {
@@ -255,27 +266,43 @@ public class ActionExecutor {
         }
 
         if (currentAction != null) {
-            if (currentAction.isComplete()) {
-                ActionResult result = currentAction.getResult();
-                SteveMod.LOGGER.info("Steve '{}' - Action completed: {} (Success: {})", 
-                    steve.getSteveName(), result.getMessage(), result.isSuccess());
-                
-                steve.getMemory().addAction(currentAction.getDescription());
-                
-                if (!result.isSuccess() && result.requiresReplanning()) {
-                    // Action failed, need to replan
-                    if (SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
-                        sendToGUI(steve.getSteveName(), "Problem: " + result.getMessage());
+            BaseAction action = currentAction;
+            try {
+                if (action.isComplete()) {
+                    ActionResult result = action.getResult();
+                    SteveMod.LOGGER.info("Steve '{}' - Action completed: {} (Success: {})",
+                        steve.getSteveName(), result.getMessage(), result.isSuccess());
+
+                    steve.getMemory().addAction(action.getDescription());
+                    interceptorChain.executeAfterAction(action, result, actionContext);
+
+                    if (!result.isSuccess() && result.requiresReplanning()) {
+                        // Stop the dependent remainder of this plan. A new command may replan safely.
+                        taskQueue.clear();
+                        failAndResetState("action requested replanning");
+                        if (SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
+                            sendToGUI(steve.getSteveName(), "Problem: " + result.getMessage());
+                        }
                     }
+
+                    currentAction = null;
+                    if (taskQueue.isEmpty()) {
+                        clearCurrentGoal();
+                        if (stateMachine.getCurrentState() == AgentState.EXECUTING) {
+                            stateMachine.transitionTo(AgentState.COMPLETED, "plan finished");
+                            stateMachine.transitionTo(AgentState.IDLE, "ready");
+                        }
+                    }
+                } else {
+                    if (ticksSinceLastAction % 100 == 0) {
+                        SteveMod.LOGGER.info("Steve '{}' - Ticking action: {}",
+                            steve.getSteveName(), action.getDescription());
+                    }
+                    action.tick();
+                    return;
                 }
-                
-                currentAction = null;
-            } else {
-                if (ticksSinceLastAction % 100 == 0) {
-                    SteveMod.LOGGER.info("Steve '{}' - Ticking action: {}", 
-                        steve.getSteveName(), currentAction.getDescription());
-                }
-                currentAction.tick();
+            } catch (Throwable error) {
+                handleActionException("running " + action.getClass().getSimpleName(), error);
                 return;
             }
         }
@@ -283,7 +310,11 @@ public class ActionExecutor {
         if (ticksSinceLastAction >= SteveConfig.ACTION_TICK_DELAY.get()) {
             if (!taskQueue.isEmpty()) {
                 Task nextTask = taskQueue.poll();
-                executeTask(nextTask);
+                try {
+                    executeTask(nextTask);
+                } catch (Throwable error) {
+                    handleActionException("starting task " + nextTask.getAction(), error);
+                }
                 ticksSinceLastAction = 0;
                 return;
             }
@@ -291,16 +322,19 @@ public class ActionExecutor {
         
         // When completely idle (no tasks, no goal), follow nearest player
         if (taskQueue.isEmpty() && currentAction == null && currentGoal == null) {
-            if (idleFollowAction == null) {
-                idleFollowAction = new IdleFollowAction(steve);
-                idleFollowAction.start();
-            } else if (idleFollowAction.isComplete()) {
-                // Restart idle following if it stopped
-                idleFollowAction = new IdleFollowAction(steve);
-                idleFollowAction.start();
-            } else {
-                // Continue idle following
-                idleFollowAction.tick();
+            try {
+                if (idleFollowAction == null || idleFollowAction.isComplete()) {
+                    idleFollowAction = new IdleFollowAction(steve);
+                    idleFollowAction.start();
+                } else {
+                    idleFollowAction.tick();
+                }
+            } catch (Throwable error) {
+                SteveMod.LOGGER.error("Steve '{}' idle follow action failed", steve.getSteveName(), error);
+                if (idleFollowAction != null) {
+                    idleFollowAction.cancel();
+                }
+                idleFollowAction = null;
             }
         } else if (idleFollowAction != null) {
             idleFollowAction.cancel();
@@ -309,6 +343,12 @@ public class ActionExecutor {
     }
 
     private void executeTask(Task task) {
+        if (!TaskValidator.isValid(task)) {
+            SteveMod.LOGGER.warn("Steve '{}' rejected invalid task: {}", steve.getSteveName(), task);
+            sendToGUI(steve.getSteveName(), "I rejected an invalid action from the AI plan.");
+            return;
+        }
+
         String actionType = task.getAction();
 
         // Check permissions before executing
@@ -331,6 +371,11 @@ public class ActionExecutor {
         }
 
         SteveMod.LOGGER.info("Created action: {} - starting now...", currentAction.getClass().getSimpleName());
+        if (!interceptorChain.executeBeforeAction(currentAction, actionContext)) {
+            cancelCurrentAction();
+            sendToGUI(steve.getSteveName(), "Action was rejected by a safety interceptor.");
+            return;
+        }
         currentAction.start();
         SteveMod.LOGGER.info("Action started! Is complete: {}", currentAction.isComplete());
     }
@@ -381,7 +426,7 @@ public class ActionExecutor {
             case "pathfind" -> new PathfindAction(steve, task);
             case "mine" -> new MineBlockAction(steve, task);
             case "place" -> new PlaceBlockAction(steve, task);
-            case "craft" -> new CraftItemAction(steve, task);
+
             case "attack" -> new CombatAction(steve, task);
             case "follow" -> new FollowPlayerAction(steve, task);
             case "gather" -> new GatherResourceAction(steve, task);
@@ -394,23 +439,27 @@ public class ActionExecutor {
     }
 
     public void stopCurrentAction() {
-        if (currentAction != null) {
-            currentAction.cancel();
-            currentAction = null;
+        if (planningFuture != null) {
+            planningFuture.cancel(true);
+            planningFuture = null;
         }
+        isPlanning = false;
+        pendingCommand = null;
+
+        cancelCurrentAction();
         if (idleFollowAction != null) {
             idleFollowAction.cancel();
             idleFollowAction = null;
         }
         taskQueue.clear();
-        currentGoal = null;
+        clearCurrentGoal();
 
         // Reset state machine
         stateMachine.reset();
     }
 
     public boolean isExecuting() {
-        return currentAction != null || !taskQueue.isEmpty();
+        return isPlanning || currentAction != null || !taskQueue.isEmpty();
     }
 
     public String getCurrentGoal() {
@@ -460,6 +509,99 @@ public class ActionExecutor {
      */
     public boolean isPlanning() {
         return isPlanning;
+    }
+
+    public void shutdown() {
+        stopCurrentAction();
+        eventBus.shutdown();
+    }
+
+    private void applyPlan(ResponseParser.ParsedResponse response) {
+        taskQueue.clear();
+
+        int rejectedTasks = 0;
+        for (Task task : response.getTasks()) {
+            if (TaskValidator.isValid(task)) {
+                taskQueue.add(task);
+            } else {
+                rejectedTasks++;
+                SteveMod.LOGGER.warn("Steve '{}' rejected invalid planned task: {}",
+                    steve.getSteveName(), task);
+            }
+        }
+
+        if (rejectedTasks > 0) {
+            sendToGUI(steve.getSteveName(),
+                "I ignored " + rejectedTasks + " invalid action(s) from the AI plan.");
+        }
+
+        if (taskQueue.isEmpty()) {
+            failAndResetState("plan contained no valid tasks");
+            clearCurrentGoal();
+            return;
+        }
+
+        currentGoal = response.getPlan();
+        steve.getMemory().setCurrentGoal(currentGoal != null ? currentGoal : "");
+        if (stateMachine.getCurrentState() == AgentState.PLANNING) {
+            stateMachine.transitionTo(AgentState.EXECUTING, "plan accepted");
+        }
+    }
+
+    private void clearCurrentGoal() {
+        currentGoal = null;
+        steve.getMemory().setCurrentGoal("");
+    }
+
+    private void handleActionException(String phase, Throwable error) {
+        SteveMod.LOGGER.error("Steve '{}' failed while {}", steve.getSteveName(), phase, error);
+        if (currentAction != null) {
+            Exception interceptorError = error instanceof Exception exception
+                ? exception
+                : new RuntimeException(error);
+            interceptorChain.executeOnError(currentAction, interceptorError, actionContext);
+            try {
+                currentAction.cancel();
+            } catch (Throwable cancelError) {
+                error.addSuppressed(cancelError);
+            }
+            currentAction = null;
+        }
+        sendToGUI(steve.getSteveName(), "Action failed safely: " + error.getClass().getSimpleName());
+        taskQueue.clear();
+        failAndResetState("action failed");
+        clearCurrentGoal();
+    }
+
+    private void cancelCurrentAction() {
+        BaseAction action = currentAction;
+        if (action == null) {
+            return;
+        }
+
+        try {
+            action.cancel();
+            interceptorChain.executeAfterAction(action, action.getResult(), actionContext);
+        } catch (Throwable error) {
+            Exception interceptorError = error instanceof Exception exception
+                ? exception
+                : new RuntimeException(error);
+            interceptorChain.executeOnError(action, interceptorError, actionContext);
+            SteveMod.LOGGER.error("Steve '{}' failed to cancel action {}",
+                steve.getSteveName(), action.getClass().getSimpleName(), error);
+        } finally {
+            currentAction = null;
+        }
+    }
+
+    private void failAndResetState(String reason) {
+        AgentState state = stateMachine.getCurrentState();
+        if (state == AgentState.PLANNING || state == AgentState.EXECUTING) {
+            stateMachine.transitionTo(AgentState.FAILED, reason);
+        }
+        if (stateMachine.getCurrentState() == AgentState.FAILED) {
+            stateMachine.transitionTo(AgentState.IDLE, "recovered");
+        }
     }
 }
 

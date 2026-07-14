@@ -154,6 +154,13 @@ public class PermissionManager {
         LOGGER.info("All protected regions cleared");
     }
 
+    /** Clears world-scoped permission state when the server stops. */
+    public void clear() {
+        stevePermissions.clear();
+        protectedRegions.clear();
+        LOGGER.info("Steve permissions and protected regions cleared");
+    }
+
     // ── Inner class ─────────────────────────────────────────────────
 
     /**

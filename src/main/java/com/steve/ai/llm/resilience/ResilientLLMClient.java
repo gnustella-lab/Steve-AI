@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
 
 /**
@@ -67,6 +70,12 @@ import java.util.function.Supplier;
 public class ResilientLLMClient implements AsyncLLMClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ResilientLLMClient.class);
+    private static final ScheduledExecutorService RETRY_SCHEDULER =
+        Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "llm-retry-scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
 
     private final AsyncLLMClient delegate;
     private final LLMCache cache;
@@ -172,9 +181,10 @@ public class ResilientLLMClient implements AsyncLLMClient {
     public CompletableFuture<LLMResponse> sendAsync(String prompt, Map<String, Object> params) {
         String model = (String) params.getOrDefault("model", "unknown");
         String providerId = delegate.getProviderId();
+        String requestFingerprint = buildRequestFingerprint(prompt, params);
 
         // Step 1: Check cache first (fastest path)
-        Optional<LLMResponse> cached = cache.get(prompt, model, providerId);
+        Optional<LLMResponse> cached = cache.get(requestFingerprint, model, providerId);
         if (cached.isPresent()) {
             LOGGER.debug("[{}] Cache hit for prompt (hash: {})", providerId, prompt.hashCode());
             return CompletableFuture.completedFuture(cached.get());
@@ -183,7 +193,7 @@ public class ResilientLLMClient implements AsyncLLMClient {
         LOGGER.debug("[{}] Cache miss, executing request with resilience patterns", providerId);
 
         // Step 2: Execute with resilience patterns
-        return executeWithResilience(prompt, params);
+        return executeWithResilience(prompt, requestFingerprint, params);
     }
 
     /**
@@ -193,22 +203,26 @@ public class ResilientLLMClient implements AsyncLLMClient {
      * @param params Request parameters
      * @return CompletableFuture with response
      */
-    private CompletableFuture<LLMResponse> executeWithResilience(String prompt, Map<String, Object> params) {
+    private CompletableFuture<LLMResponse> executeWithResilience(
+            String prompt, String requestFingerprint, Map<String, Object> params) {
         String providerId = delegate.getProviderId();
         String model = (String) params.getOrDefault("model", "unknown");
+        String fallbackPrompt = params.get("fallbackPrompt") instanceof String value
+            ? value
+            : prompt;
 
         // Create supplier that wraps the async call
-        Supplier<CompletableFuture<LLMResponse>> asyncSupplier = () -> delegate.sendAsync(prompt, params);
+        Supplier<CompletionStage<LLMResponse>> asyncSupplier = () -> delegate.sendAsync(prompt, params);
 
         // Apply resilience patterns in order: RateLimiter -> Bulkhead -> CircuitBreaker -> Retry
         // Each decorator wraps the previous one
-        Supplier<CompletableFuture<LLMResponse>> decoratedSupplier = decorateWithResilience(asyncSupplier);
+        Supplier<CompletionStage<LLMResponse>> decoratedSupplier = decorateWithResilience(asyncSupplier);
 
         try {
-            return decoratedSupplier.get()
+            return decoratedSupplier.get().toCompletableFuture()
                 .thenApply(response -> {
                     // Cache successful response
-                    cache.put(prompt, model, providerId, response);
+                    cache.put(requestFingerprint, model, providerId, response);
                     LOGGER.debug("[{}] Request successful, cached response (latency: {}ms, tokens: {})",
                         providerId, response.getLatencyMs(), response.getTokensUsed());
                     return response;
@@ -222,13 +236,13 @@ public class ResilientLLMClient implements AsyncLLMClient {
                         providerId, cause.getMessage());
 
                     // Generate fallback response
-                    return fallbackHandler.generateFallback(prompt, cause);
+                    return fallbackHandler.generateFallback(fallbackPrompt, cause);
                 });
 
         } catch (Exception e) {
             // Handle synchronous exceptions from rate limiter/bulkhead
             LOGGER.error("[{}] Request rejected by resilience layer: {}", providerId, e.getMessage());
-            return CompletableFuture.completedFuture(fallbackHandler.generateFallback(prompt, e));
+            return CompletableFuture.completedFuture(fallbackHandler.generateFallback(fallbackPrompt, e));
         }
     }
 
@@ -246,23 +260,24 @@ public class ResilientLLMClient implements AsyncLLMClient {
      * @param supplier Original supplier
      * @return Decorated supplier
      */
-    private Supplier<CompletableFuture<LLMResponse>> decorateWithResilience(
-            Supplier<CompletableFuture<LLMResponse>> supplier) {
+    private Supplier<CompletionStage<LLMResponse>> decorateWithResilience(
+            Supplier<CompletionStage<LLMResponse>> supplier) {
 
         // Apply Retry
-        Supplier<CompletableFuture<LLMResponse>> withRetry = Retry.decorateSupplier(retry, supplier);
+        Supplier<CompletionStage<LLMResponse>> withRetry =
+            Retry.decorateCompletionStage(retry, RETRY_SCHEDULER, supplier);
 
         // Apply Circuit Breaker
-        Supplier<CompletableFuture<LLMResponse>> withCircuitBreaker =
-            CircuitBreaker.decorateSupplier(circuitBreaker, withRetry);
+        Supplier<CompletionStage<LLMResponse>> withCircuitBreaker =
+            CircuitBreaker.decorateCompletionStage(circuitBreaker, withRetry);
 
         // Apply Bulkhead
-        Supplier<CompletableFuture<LLMResponse>> withBulkhead =
-            Bulkhead.decorateSupplier(bulkhead, withCircuitBreaker);
+        Supplier<CompletionStage<LLMResponse>> withBulkhead =
+            Bulkhead.decorateCompletionStage(bulkhead, withCircuitBreaker);
 
         // Apply Rate Limiter
-        Supplier<CompletableFuture<LLMResponse>> withRateLimiter =
-            RateLimiter.decorateSupplier(rateLimiter, withBulkhead);
+        Supplier<CompletionStage<LLMResponse>> withRateLimiter =
+            RateLimiter.decorateCompletionStage(rateLimiter, withBulkhead);
 
         return withRateLimiter;
     }
@@ -274,8 +289,19 @@ public class ResilientLLMClient implements AsyncLLMClient {
 
     @Override
     public boolean isHealthy() {
-        // Client is healthy if circuit breaker is not OPEN
-        return circuitBreaker.getState() != CircuitBreaker.State.OPEN;
+        return delegate.isHealthy() && circuitBreaker.getState() != CircuitBreaker.State.OPEN;
+    }
+
+    private String buildRequestFingerprint(String prompt, Map<String, Object> params) {
+        StringBuilder fingerprint = new StringBuilder(prompt);
+        params.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry -> fingerprint
+                .append('\u0000')
+                .append(entry.getKey())
+                .append('=')
+                .append(String.valueOf(entry.getValue())));
+        return fingerprint.toString();
     }
 
     /**

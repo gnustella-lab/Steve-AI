@@ -2,6 +2,7 @@ package com.steve.ai.structure;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Represents a block to be placed at a specific position.
@@ -10,9 +11,15 @@ import net.minecraft.world.level.block.Block;
 public class BlockPlacement {
     public final BlockPos pos;
     public final Block block;
+    public final BlockState state;
 
     public BlockPlacement(BlockPos pos, Block block) {
+        this(pos, block.defaultBlockState());
+    }
+
+    public BlockPlacement(BlockPos pos, BlockState state) {
         this.pos = pos;
-        this.block = block;
+        this.state = state;
+        this.block = state.getBlock();
     }
 }

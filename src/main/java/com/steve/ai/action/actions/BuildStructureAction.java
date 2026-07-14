@@ -6,6 +6,7 @@ import com.steve.ai.action.CollaborativeBuildManager;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.memory.StructureRegistry;
+import com.steve.ai.security.PermissionManager;
 import com.steve.ai.structure.BlockPlacement;
 import com.steve.ai.structure.StructureGenerators;
 import com.steve.ai.structure.StructureTemplateLoader;
@@ -43,10 +44,17 @@ public class BuildStructureAction extends BaseAction {
 
     @Override
     protected void onStart() {
-        structureType = task.getStringParameter("structure").toLowerCase();
+        String requestedStructure = task.getStringParameter("structure");
+        if (requestedStructure == null || requestedStructure.isBlank()) {
+            result = ActionResult.failure("Missing structure type");
+            return;
+        }
+        structureType = requestedStructure.toLowerCase();
         currentBlockIndex = 0;
         ticksRunning = 0;
-        collaborativeBuild = CollaborativeBuildManager.findActiveBuild(structureType);
+        String dimensionId = steve.level().dimension().location().toString();
+        collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
+            structureType, dimensionId, steve.blockPosition(), 128.0);
         if (collaborativeBuild != null) {
             isCollaborative = true;
             
@@ -145,7 +153,8 @@ public class BuildStructureAction extends BaseAction {
         buildPlan = tryLoadFromTemplate(structureType, clearPos);
         
         if (buildPlan == null) {
-            // Fall back to procedural generation            buildPlan = generateBuildPlan(structureType, clearPos, width, height, depth);
+            // Fall back to procedural generation
+            buildPlan = generateBuildPlan(structureType, clearPos, width, height, depth);
         } else {
             SteveMod.LOGGER.info("Loaded '{}' from NBT template with {} blocks", structureType, buildPlan.size());
         }
@@ -155,9 +164,8 @@ public class BuildStructureAction extends BaseAction {
             return;
         }
         
-        StructureRegistry.register(clearPos, width, height, depth, structureType);
-        
-        collaborativeBuild = CollaborativeBuildManager.findActiveBuild(structureType);
+        collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
+            structureType, dimensionId, clearPos, 128.0);
         
         if (collaborativeBuild != null) {
             isCollaborative = true;
@@ -166,10 +174,11 @@ public class BuildStructureAction extends BaseAction {
         } else {
             List<BlockPlacement> collaborativeBlocks = new ArrayList<>();
             for (BlockPlacement bp : buildPlan) {
-                collaborativeBlocks.add(new BlockPlacement(bp.pos, bp.block));
+                collaborativeBlocks.add(new BlockPlacement(bp.pos, bp.state));
             }
             
-            collaborativeBuild = CollaborativeBuildManager.registerBuild(structureType, collaborativeBlocks, clearPos);
+            collaborativeBuild = CollaborativeBuildManager.registerBuild(
+                structureType, collaborativeBlocks, clearPos, dimensionId);
             isCollaborative = true;
             SteveMod.LOGGER.info("Steve '{}' CREATED new {} collaborative build at {}", 
                 steve.getSteveName(), structureType, clearPos);
@@ -187,13 +196,16 @@ public class BuildStructureAction extends BaseAction {
         
         if (ticksRunning > MAX_TICKS) {
             steve.setFlying(false); // Disable flying on timeout
+            abandonCollaborativeBuild();
             result = ActionResult.failure("Building timeout");
             return;
         }
         
         if (isCollaborative && collaborativeBuild != null) {
             if (collaborativeBuild.isComplete()) {
-                CollaborativeBuildManager.completeBuild(collaborativeBuild.structureId);
+                if (CollaborativeBuildManager.completeBuild(collaborativeBuild.structureId)) {
+                    registerCompletedStructure();
+                }
                 steve.setFlying(false);
                 result = ActionResult.success("Built " + structureType + " collaboratively!");
                 return;
@@ -224,8 +236,30 @@ public class BuildStructureAction extends BaseAction {
                 
                 BlockState existingState = steve.level().getBlockState(pos);
                 
-                BlockState blockState = placement.block.defaultBlockState();
-                steve.level().setBlock(pos, blockState, 3);
+                BlockState blockState = placement.state;
+
+                if (steve.level() instanceof ServerLevel serverLevel
+                        && PermissionManager.getInstance().isProtected(serverLevel, pos)) {
+                    CollaborativeBuildManager.returnBlock(
+                        collaborativeBuild, steve.getSteveName(), placement);
+                    steve.setFlying(false);
+                    abandonCollaborativeBuild();
+                    result = ActionResult.failure("Build position is inside a protected region", false);
+                    return;
+                }
+
+                boolean placed = existingState.equals(blockState) || steve.level().setBlock(pos, blockState, 3);
+                if (!placed) {
+                    CollaborativeBuildManager.returnBlock(
+                        collaborativeBuild, steve.getSteveName(), placement);
+                    steve.setFlying(false);
+                    abandonCollaborativeBuild();
+                    result = ActionResult.failure("Minecraft rejected block placement at " + pos);
+                    return;
+                }
+
+                CollaborativeBuildManager.markBlockPlaced(collaborativeBuild, steve.getSteveName());
+                currentBlockIndex++;
                 
                 SteveMod.LOGGER.info("Steve '{}' PLACED BLOCK at {} - Total: {}/{}", 
                     steve.getSteveName(), pos, collaborativeBuild.getBlocksPlaced(), 
@@ -264,16 +298,44 @@ public class BuildStructureAction extends BaseAction {
     protected void onCancel() {
         steve.setFlying(false); // Disable flying when cancelled
         steve.getNavigation().stop();
+        abandonCollaborativeBuild();
     }
 
     @Override
     public String getDescription() {
-        return "Build " + structureType + " (" + currentBlockIndex + "/" + (buildPlan != null ? buildPlan.size() : 0) + ")";
+        String structure = structureType != null
+            ? structureType
+            : task.getStringParameter("structure");
+        return "Build " + structure + " (" + currentBlockIndex + "/"
+            + (buildPlan != null ? buildPlan.size() : 0) + ")";
     }
 
     private List<BlockPlacement> generateBuildPlan(String type, BlockPos start, int width, int height, int depth) {
         // Delegate to centralized StructureGenerators utility
         return StructureGenerators.generate(type, start, width, height, depth, buildMaterials);
+    }
+
+    private void abandonCollaborativeBuild() {
+        if (collaborativeBuild != null) {
+            CollaborativeBuildManager.abandonBuild(collaborativeBuild, steve.getSteveName());
+        }
+    }
+
+    private void registerCompletedStructure() {
+        List<BlockPlacement> plan = collaborativeBuild.buildPlan;
+        if (plan.isEmpty()) {
+            return;
+        }
+
+        int minX = plan.stream().mapToInt(block -> block.pos.getX()).min().orElse(0);
+        int minY = plan.stream().mapToInt(block -> block.pos.getY()).min().orElse(0);
+        int minZ = plan.stream().mapToInt(block -> block.pos.getZ()).min().orElse(0);
+        int maxX = plan.stream().mapToInt(block -> block.pos.getX()).max().orElse(minX);
+        int maxY = plan.stream().mapToInt(block -> block.pos.getY()).max().orElse(minY);
+        int maxZ = plan.stream().mapToInt(block -> block.pos.getZ()).max().orElse(minZ);
+
+        StructureRegistry.register(new BlockPos(minX, minY, minZ),
+            maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1, structureType);
     }
     
     private Block getMaterial(int index) {
@@ -281,13 +343,15 @@ public class BuildStructureAction extends BaseAction {
     }
 
     private Block parseBlock(String blockName) {
+        if (blockName == null || blockName.isBlank()) {
+            return Blocks.AIR;
+        }
         blockName = blockName.toLowerCase().replace(" ", "_");
         if (!blockName.contains(":")) {
             blockName = "minecraft:" + blockName;
         }
-        ResourceLocation resourceLocation = new ResourceLocation(blockName);
-        Block block = BuiltInRegistries.BLOCK.get(resourceLocation);
-        return block != null ? block : Blocks.AIR;
+        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
+        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
     }
     
     /**
@@ -472,8 +536,7 @@ public class BuildStructureAction extends BaseAction {
         List<BlockPlacement> blocks = new ArrayList<>();
         for (var templateBlock : template.blocks) {
             BlockPos worldPos = startPos.offset(templateBlock.relativePos);
-            Block block = templateBlock.blockState.getBlock();
-            blocks.add(new BlockPlacement(worldPos, block));
+            blocks.add(new BlockPlacement(worldPos, templateBlock.blockState));
         }
         
         return blocks;

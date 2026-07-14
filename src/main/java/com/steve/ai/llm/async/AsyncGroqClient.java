@@ -137,8 +137,8 @@ public class AsyncGroqClient implements AsyncLLMClient {
         JsonObject body = new JsonObject();
 
         String modelToUse = (String) params.getOrDefault("model", this.model);
-        int maxTokensToUse = (int) params.getOrDefault("maxTokens", this.maxTokens);
-        double tempToUse = (double) params.getOrDefault("temperature", this.temperature);
+        int maxTokensToUse = ((Number) params.getOrDefault("maxTokens", this.maxTokens)).intValue();
+        double tempToUse = ((Number) params.getOrDefault("temperature", this.temperature)).doubleValue();
 
         body.addProperty("model", modelToUse);
         body.addProperty("max_tokens", maxTokensToUse);

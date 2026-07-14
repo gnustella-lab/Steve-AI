@@ -104,9 +104,14 @@ public class SimpleEventBus implements EventBus {
         }
 
         Class<?> eventType = event.getClass();
-        CopyOnWriteArrayList<SubscriberEntry<?>> subs = subscribers.get(eventType);
+        List<SubscriberEntry<?>> subs = subscribers.entrySet().stream()
+            .filter(entry -> entry.getKey().isAssignableFrom(eventType))
+            .flatMap(entry -> entry.getValue().stream())
+            .filter(SubscriberEntry::isActive)
+            .sorted((left, right) -> Integer.compare(right.priority, left.priority))
+            .toList();
 
-        if (subs == null || subs.isEmpty()) {
+        if (subs.isEmpty()) {
             LOGGER.trace("No subscribers for event type: {}", eventType.getSimpleName());
             return;
         }
@@ -128,7 +133,7 @@ public class SimpleEventBus implements EventBus {
 
     @Override
     public <T> void publishAsync(T event) {
-        if (event == null) return;
+        if (event == null || asyncExecutor.isShutdown()) return;
 
         asyncExecutor.submit(() -> {
             try {
@@ -175,15 +180,8 @@ public class SimpleEventBus implements EventBus {
      * <p>Call this during application shutdown.</p>
      */
     public void shutdown() {
-        asyncExecutor.shutdown();
-        try {
-            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                asyncExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            asyncExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        clear();
+        asyncExecutor.shutdownNow();
         LOGGER.info("EventBus shutdown complete");
     }
 

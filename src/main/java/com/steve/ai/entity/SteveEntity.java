@@ -23,7 +23,6 @@ public class SteveEntity extends PathfinderMob {
     private static final EntityDataAccessor<String> STEVE_NAME = 
         SynchedEntityData.defineId(SteveEntity.class, EntityDataSerializers.STRING);
 
-    private String steveName;
     private SteveMemory memory;
     private ActionExecutor actionExecutor;
     private int tickCounter = 0;
@@ -32,9 +31,8 @@ public class SteveEntity extends PathfinderMob {
 
     public SteveEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
-        this.steveName = "Steve";
         this.memory = new SteveMemory(this);
-        this.actionExecutor = new ActionExecutor(this);
+        this.actionExecutor = null;
         this.setCustomNameVisible(true);
         
         this.isInvulnerable = true;
@@ -67,18 +65,17 @@ public class SteveEntity extends PathfinderMob {
         super.tick();
         
         if (!this.level().isClientSide) {
-            actionExecutor.tick();
+            getActionExecutor().tick();
         }
     }
 
     public void setSteveName(String name) {
-        this.steveName = name;
         this.entityData.set(STEVE_NAME, name);
         this.setCustomName(Component.literal(name));
     }
 
     public String getSteveName() {
-        return this.steveName;
+        return entityData.get(STEVE_NAME);
     }
 
     public SteveMemory getMemory() {
@@ -86,13 +83,16 @@ public class SteveEntity extends PathfinderMob {
     }
 
     public ActionExecutor getActionExecutor() {
+        if (this.actionExecutor == null) {
+            this.actionExecutor = new ActionExecutor(this);
+        }
         return this.actionExecutor;
     }
 
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
-        tag.putString("SteveName", this.steveName);
+        tag.putString("SteveName", getSteveName());
         
         CompoundTag memoryTag = new CompoundTag();
         this.memory.saveToNBT(memoryTag);
@@ -123,8 +123,16 @@ public class SteveEntity extends PathfinderMob {
     public void sendChatMessage(String message) {
         if (this.level().isClientSide) return;
         
-        Component chatComponent = Component.literal("<" + this.steveName + "> " + message);
+        Component chatComponent = Component.literal("<" + getSteveName() + "> " + message);
         this.level().players().forEach(player -> player.sendSystemMessage(chatComponent));
+    }
+
+    @Override
+    public void remove(RemovalReason reason) {
+        if (actionExecutor != null) {
+            actionExecutor.shutdown();
+        }
+        super.remove(reason);
     }
 
     @Override

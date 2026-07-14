@@ -53,6 +53,9 @@ public class ActionUtils {
      * @return The Block instance, or Blocks.AIR if not found
      */
     public static Block parseBlock(String blockName) {
+        if (blockName == null || blockName.isBlank()) {
+            return Blocks.AIR;
+        }
         blockName = blockName.toLowerCase().replace(" ", "_");
 
         // Add minecraft namespace if not present
@@ -60,8 +63,7 @@ public class ActionUtils {
             blockName = "minecraft:" + blockName;
         }
 
-        ResourceLocation resourceLocation = new ResourceLocation(blockName);
-        Block block = BuiltInRegistries.BLOCK.get(resourceLocation);
-        return block != null ? block : Blocks.AIR;
+        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
+        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
     }
 }

@@ -3,8 +3,6 @@ AGENTS.md
 
 # Build
 build/
-# Binary files are intentionally not committed; use a local Gradle 8.x installation.
-gradle/wrapper/gradle-wrapper.jar
 .gradle/
 bin/
 out/
@@ -17,6 +15,7 @@ out/
 
 # Minecraft
 run/
+run-gametest/
 logs/
 
 # Config with API keys
@@ -31,6 +30,7 @@ run/config/steve-common.toml
 
 # Structure files (if regenerable)
 *.nbt
+!src/main/resources/data/steve/structures/empty.nbt
 
 # macOS
 .DS_Store

@@ -40,7 +40,9 @@ public class SteveMemory {
     }
 
     public List<String> getRecentActions(int count) {
-        int size = Math.min(count, recentActions.size());
+        if (count <= 0) {
+            return List.of();
+        }
         List<String> result = new ArrayList<>();
         
         int startIndex = Math.max(0, recentActions.size() - count);
@@ -74,7 +76,8 @@ public class SteveMemory {
         if (tag.contains("RecentActions")) {
             recentActions.clear();
             ListTag actionsList = tag.getList("RecentActions", 8); // 8 = String type
-            for (int i = 0; i < actionsList.size(); i++) {
+            int firstRetained = Math.max(0, actionsList.size() - MAX_RECENT_ACTIONS);
+            for (int i = firstRetained; i < actionsList.size(); i++) {
                 recentActions.add(actionsList.getString(i));
             }
         }

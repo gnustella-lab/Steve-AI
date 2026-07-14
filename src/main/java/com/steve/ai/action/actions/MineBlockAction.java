@@ -4,12 +4,14 @@ import com.steve.ai.SteveMod;
 import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
+import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -173,11 +175,20 @@ public class MineBlockAction extends BaseAction {
         }
         
         if (steve.level().getBlockState(currentTarget).getBlock() == targetBlock) {
+            if (isProtected(currentTarget)) {
+                result = ActionResult.failure("Target block is inside a protected region", false);
+                return;
+            }
+
             steve.teleportTo(currentTarget.getX() + 0.5, currentTarget.getY(), currentTarget.getZ() + 0.5);
             
             steve.swing(InteractionHand.MAIN_HAND, true);
             
-            steve.level().destroyBlock(currentTarget, true);
+            if (!steve.level().destroyBlock(currentTarget, true)) {
+                SteveMod.LOGGER.warn("Minecraft rejected mining at {}", currentTarget);
+                currentTarget = null;
+                return;
+            }
             minedCount++;
             ticksSinceLastMine = 0; // Reset delay timer
             
@@ -207,7 +218,13 @@ public class MineBlockAction extends BaseAction {
 
     @Override
     public String getDescription() {
-        return "Mine " + targetQuantity + " " + targetBlock.getName().getString() + " (" + minedCount + " found)";
+        String blockName = targetBlock != null
+            ? targetBlock.getName().getString()
+            : task.getStringParameter("block");
+        int quantity = targetQuantity > 0
+            ? targetQuantity
+            : task.getIntParameter("quantity", 1);
+        return "Mine " + quantity + " " + blockName + " (" + minedCount + " found)";
     }
 
     /**
@@ -220,12 +237,13 @@ public class MineBlockAction extends BaseAction {
         if (lightLevel < MIN_LIGHT_LEVEL) {
             BlockPos torchPos = findTorchPosition(stevePos);
             
-            if (torchPos != null && steve.level().getBlockState(torchPos).isAir()) {
-                steve.level().setBlock(torchPos, Blocks.TORCH.defaultBlockState(), 3);
-                SteveMod.LOGGER.info("Steve '{}' placed torch at {} (light level was {})", 
-                    steve.getSteveName(), torchPos, lightLevel);
-                
-                steve.swing(InteractionHand.MAIN_HAND, true);
+            if (torchPos != null && steve.level().getBlockState(torchPos).isAir()
+                    && !isProtected(torchPos)) {
+                if (steve.level().setBlock(torchPos, Blocks.TORCH.defaultBlockState(), 3)) {
+                    SteveMod.LOGGER.info("Steve '{}' placed torch at {} (light level was {})",
+                        steve.getSteveName(), torchPos, lightLevel);
+                    steve.swing(InteractionHand.MAIN_HAND, true);
+                }
             }
         }
     }
@@ -261,27 +279,45 @@ public class MineBlockAction extends BaseAction {
     private void mineNearbyBlock() {
         BlockPos centerPos = currentTunnelPos;
         BlockPos abovePos = centerPos.above();
-        BlockPos belowPos = centerPos.below();
         
         BlockState centerState = steve.level().getBlockState(centerPos);
-        if (!centerState.isAir() && centerState.getBlock() != Blocks.BEDROCK) {
-            steve.teleportTo(centerPos.getX() + 0.5, centerPos.getY(), centerPos.getZ() + 0.5);
+        if (!centerState.isAir()) {
+            if (centerState.getBlock() == Blocks.BEDROCK) {
+                result = ActionResult.failure("Tunnel is blocked by bedrock", false);
+                return;
+            }
+            if (isProtected(centerPos)) {
+                result = ActionResult.failure("Tunnel reached a protected region", false);
+                return;
+            }
             steve.swing(InteractionHand.MAIN_HAND, true);
-            steve.level().destroyBlock(centerPos, true);
+            if (!steve.level().destroyBlock(centerPos, true)) {
+                SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", centerPos);
+                result = ActionResult.failure("Minecraft rejected tunnel mining at " + centerPos);
+                return;
+            }
             SteveMod.LOGGER.info("Steve '{}' mining tunnel at {}", steve.getSteveName(), centerPos);
         }
-        
+
         BlockState aboveState = steve.level().getBlockState(abovePos);
-        if (!aboveState.isAir() && aboveState.getBlock() != Blocks.BEDROCK) {
+        if (!aboveState.isAir()) {
+            if (aboveState.getBlock() == Blocks.BEDROCK) {
+                result = ActionResult.failure("Tunnel ceiling is blocked by bedrock", false);
+                return;
+            }
+            if (isProtected(abovePos)) {
+                result = ActionResult.failure("Tunnel reached a protected region", false);
+                return;
+            }
             steve.swing(InteractionHand.MAIN_HAND, true);
-            steve.level().destroyBlock(abovePos, true);
+            if (!steve.level().destroyBlock(abovePos, true)) {
+                SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", abovePos);
+                result = ActionResult.failure("Minecraft rejected tunnel mining at " + abovePos);
+                return;
+            }
         }
-        
-        BlockState belowState = steve.level().getBlockState(belowPos);
-        if (!belowState.isAir() && belowState.getBlock() != Blocks.BEDROCK) {
-            steve.swing(InteractionHand.MAIN_HAND, true);
-            steve.level().destroyBlock(belowPos, true);
-        }
+
+        steve.teleportTo(centerPos.getX() + 0.5, centerPos.getY(), centerPos.getZ() + 0.5);
         
         currentTunnelPos = currentTunnelPos.offset(miningDirectionX, 0, miningDirectionZ);
         
@@ -300,7 +336,8 @@ public class MineBlockAction extends BaseAction {
             
             for (int y = -1; y <= 1; y++) {
                 BlockPos orePos = checkPos.offset(0, y, 0);
-                if (steve.level().getBlockState(orePos).getBlock() == targetBlock) {
+                if (steve.level().getBlockState(orePos).getBlock() == targetBlock
+                        && !isProtected(orePos)) {
                     foundBlocks.add(orePos);
                 }
             }
@@ -359,6 +396,9 @@ public class MineBlockAction extends BaseAction {
     }
 
     private Block parseBlock(String blockName) {
+        if (blockName == null || blockName.isBlank()) {
+            return Blocks.AIR;
+        }
         blockName = blockName.toLowerCase().replace(" ", "_");
         
         Map<String, String> resourceToOre = new HashMap<>() {{
@@ -380,8 +420,13 @@ public class MineBlockAction extends BaseAction {
             blockName = "minecraft:" + blockName;
         }
         
-        ResourceLocation resourceLocation = new ResourceLocation(blockName);
-        return BuiltInRegistries.BLOCK.get(resourceLocation);
+        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
+        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+    }
+
+    private boolean isProtected(BlockPos pos) {
+        return steve.level() instanceof ServerLevel serverLevel
+            && PermissionManager.getInstance().isProtected(serverLevel, pos);
     }
 }
 

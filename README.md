@@ -113,9 +113,8 @@ Each Steve runs an autonomous agent loop that processes natural language command
 - **StructureRegistry**: Catalogs built structures for reference and avoidance
 
 **Code Execution** (`com.steve.ai.execution`)
-- **CodeExecutionEngine**: GraalVM JavaScript engine for LLM-generated scripts
-- **SteveAPI**: Safe API bridge exposing Minecraft actions to scripts
-- **Sandboxing**: Restricted environment preventing harmful operations
+- JavaScript execution is currently disabled. The compatibility facade rejects scripts until
+  execution can be bounded by a real timeout and resource-limited sandbox.
 
 ### Key Design Decisions
 
@@ -175,7 +174,7 @@ src/main/java/com/steve/ai/
 ├── action/          # Action classes and collaborative build manager
 ├── structure/       # Procedural generation and template loading
 ├── memory/          # Context management and world knowledge
-├── execution/       # JavaScript code execution engine
+├── execution/       # Action runtime and disabled JavaScript compatibility facade
 ├── client/          # GUI overlay
 └── command/         # Minecraft commands (/steve spawn, etc)
 ```

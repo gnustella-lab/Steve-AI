@@ -4,7 +4,7 @@ import com.steve.ai.llm.async.LLMResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
+import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -46,39 +46,35 @@ public class LLMFallbackHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMFallbackHandler.class);
 
     // Pattern-based fallback responses in JSON format matching ResponseParser expectations
-    private static final Map<Pattern, String> PATTERN_RESPONSES = Map.of(
-        // Mining patterns
-        Pattern.compile("(?i).*(mine|dig|collect|gather|ore|diamond|iron|coal|stone).*"),
-        "{\"thoughts\":\"[Fallback] Mining action detected\",\"tasks\":[{\"action\":\"mine\",\"target\":\"iron_ore\",\"quantity\":10}]}",
-
-        // Building patterns
-        Pattern.compile("(?i).*(build|construct|create|make).*(house|home|shelter|structure|base).*"),
-        "{\"thoughts\":\"[Fallback] Building action detected\",\"tasks\":[{\"action\":\"build\",\"structure\":\"house\",\"size\":\"small\"}]}",
-
-        // Combat patterns
-        Pattern.compile("(?i).*(attack|fight|kill|destroy|hostile|monster|zombie|skeleton|creeper).*"),
-        "{\"thoughts\":\"[Fallback] Combat action detected\",\"tasks\":[{\"action\":\"attack\",\"target\":\"nearest_hostile\"}]}",
-
-        // Follow patterns
-        Pattern.compile("(?i).*(follow|come|here|with me|accompany).*"),
-        "{\"thoughts\":\"[Fallback] Follow action detected\",\"tasks\":[{\"action\":\"follow\",\"target\":\"player\"}]}",
-
-        // Movement patterns
-        Pattern.compile("(?i).*(go to|move to|walk to|travel|path|navigate).*"),
-        "{\"thoughts\":\"[Fallback] Movement action detected\",\"tasks\":[{\"action\":\"pathfind\",\"target\":\"player\"}]}",
-
-        // Placement patterns
-        Pattern.compile("(?i).*(place|put|set).*(block|torch|door).*"),
-        "{\"thoughts\":\"[Fallback] Placement action detected\",\"tasks\":[{\"action\":\"place_block\",\"block\":\"torch\",\"position\":\"here\"}]}",
-
-        // Stop patterns
-        Pattern.compile("(?i).*(stop|halt|cancel|wait|pause|stay).*"),
-        "{\"thoughts\":\"[Fallback] Stop action detected\",\"tasks\":[{\"action\":\"wait\",\"duration\":5}]}"
+    private static final List<FallbackRule> FALLBACK_RULES = List.of(
+        // Regras mais específicas devem vir antes das genéricas.
+        new FallbackRule(
+            Pattern.compile("(?i).*(build|construct|create|make).*(house|home|shelter|structure|base).*"),
+            "{\"reasoning\":\"[Fallback] Building action detected\",\"plan\":\"Build a small house\","
+                + "\"tasks\":[{\"action\":\"build\",\"parameters\":{\"structure\":\"house\","
+                + "\"blocks\":[\"oak_planks\",\"cobblestone\",\"glass_pane\"],\"dimensions\":[9,6,9]}}]}"
+        ),
+        new FallbackRule(
+            Pattern.compile("(?i).*(attack|fight|kill|destroy|hostile|monster|zombie|skeleton|creeper).*"),
+            "{\"reasoning\":\"[Fallback] Combat action detected\",\"plan\":\"Attack nearby hostile mobs\","
+                + "\"tasks\":[{\"action\":\"attack\",\"parameters\":{\"target\":\"hostile\"}}]}"
+        ),
+        new FallbackRule(
+            Pattern.compile("(?i).*(follow|come|here|with me|accompany).*"),
+            "{\"reasoning\":\"[Fallback] Follow action detected\",\"plan\":\"Follow the nearest player\","
+                + "\"tasks\":[{\"action\":\"follow\",\"parameters\":{\"player\":\"me\"}}]}"
+        ),
+        new FallbackRule(
+            Pattern.compile("(?i).*(mine|dig|collect|gather|ore|diamond|iron|coal|stone).*"),
+            "{\"reasoning\":\"[Fallback] Mining action detected\",\"plan\":\"Mine nearby iron ore\","
+                + "\"tasks\":[{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":10}}]}"
+        )
     );
 
     // Default response when no pattern matches
     private static final String DEFAULT_RESPONSE =
-        "{\"thoughts\":\"[Fallback] No pattern matched, waiting\",\"tasks\":[{\"action\":\"wait\",\"duration\":5}]}";
+        "{\"reasoning\":\"[Fallback] No safe offline action matched\","
+            + "\"plan\":\"No action available while the AI provider is offline\",\"tasks\":[]}";
 
     /**
      * Generates a fallback response based on pattern matching.
@@ -125,10 +121,10 @@ public class LLMFallbackHandler {
 
         String lowerPrompt = prompt.toLowerCase();
 
-        for (Map.Entry<Pattern, String> entry : PATTERN_RESPONSES.entrySet()) {
-            if (entry.getKey().matcher(lowerPrompt).matches()) {
-                LOGGER.debug("Matched pattern: {}", entry.getKey().pattern());
-                return entry.getValue();
+        for (FallbackRule rule : FALLBACK_RULES) {
+            if (rule.pattern.matcher(lowerPrompt).matches()) {
+                LOGGER.debug("Matched pattern: {}", rule.pattern.pattern());
+                return rule.response;
             }
         }
 
@@ -167,8 +163,8 @@ public class LLMFallbackHandler {
         }
 
         String lowerPrompt = prompt.toLowerCase();
-        return PATTERN_RESPONSES.keySet().stream()
-            .anyMatch(pattern -> pattern.matcher(lowerPrompt).matches());
+        return FALLBACK_RULES.stream()
+            .anyMatch(rule -> rule.pattern.matcher(lowerPrompt).matches());
     }
 
     /**
@@ -177,6 +173,9 @@ public class LLMFallbackHandler {
      * @return Pattern count
      */
     public int getPatternCount() {
-        return PATTERN_RESPONSES.size();
+        return FALLBACK_RULES.size();
+    }
+
+    private record FallbackRule(Pattern pattern, String response) {
     }
 }

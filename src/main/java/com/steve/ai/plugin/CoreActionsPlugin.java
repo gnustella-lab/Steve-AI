@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  *   <li><b>pathfind</b>: Navigate to coordinates (x, y, z)</li>
  *   <li><b>mine</b>: Mine blocks (block type, quantity)</li>
  *   <li><b>place</b>: Place blocks at coordinates</li>
- *   <li><b>craft</b>: Craft items (item, quantity)</li>
+
  *   <li><b>attack</b>: Attack entities (target)</li>
  *   <li><b>follow</b>: Follow a player</li>
  *   <li><b>gather</b>: Gather resources (resource, quantity)</li>
@@ -31,7 +31,7 @@ public class CoreActionsPlugin implements ActionPlugin {
     private static final Logger LOGGER = LoggerFactory.getLogger(CoreActionsPlugin.class);
 
     private static final String PLUGIN_ID = "core-actions";
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.5.0";
 
     @Override
     public String getPluginId() {
@@ -68,10 +68,6 @@ public class CoreActionsPlugin implements ActionPlugin {
             (steve, task, ctx) -> new BuildStructureAction(steve, task),
             priority, PLUGIN_ID);
 
-        // Crafting
-        registry.register("craft",
-            (steve, task, ctx) -> new CraftItemAction(steve, task),
-            priority, PLUGIN_ID);
 
         // Combat
         registry.register("attack",

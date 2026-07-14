@@ -9,7 +9,7 @@
     provider = "groq"
     
     # Maximum tokens per API request (shared across providers)
-    maxTokens = 1000
+    maxTokens = 8000
     
     # Temperature (0.0-2.0, lower is more deterministic)
     temperature = 0.7

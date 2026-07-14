@@ -10,6 +10,7 @@ import com.steve.ai.action.Task;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class ResponseParser {
@@ -64,27 +65,57 @@ public class ResponseParser {
         if (cleaned.endsWith("```")) {
             cleaned = cleaned.substring(0, cleaned.length() - 3);
         }
-        
+
         cleaned = cleaned.trim();
-        
-        // Fix common JSON formatting issues
-        cleaned = cleaned.replaceAll("\\n\\s*", " ");
-        
-        // Fix missing commas between array/object elements (common AI mistake)
-        cleaned = cleaned.replaceAll("}\\s+\\{", "},{");
-        cleaned = cleaned.replaceAll("}\\s+\\[", "},[");
-        cleaned = cleaned.replaceAll("]\\s+\\{", "],{");
-        cleaned = cleaned.replaceAll("]\\s+\\[", "],[");
-        
-        return cleaned;
+
+        int objectStart = cleaned.indexOf('{');
+        if (objectStart < 0) {
+            return cleaned;
+        }
+
+        boolean inString = false;
+        boolean escaped = false;
+        int depth = 0;
+
+        for (int i = objectStart; i < cleaned.length(); i++) {
+            char current = cleaned.charAt(i);
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (current == '\\') {
+                    escaped = true;
+                } else if (current == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (current == '"') {
+                inString = true;
+            } else if (current == '{') {
+                depth++;
+            } else if (current == '}') {
+                depth--;
+                if (depth == 0) {
+                    return cleaned.substring(objectStart, i + 1);
+                }
+            }
+        }
+
+        return cleaned.substring(objectStart);
     }
 
     private static Task parseTask(JsonObject taskObj) {
-        if (!taskObj.has("action")) {
+        if (!taskObj.has("action") || !taskObj.get("action").isJsonPrimitive()
+                || !taskObj.getAsJsonPrimitive("action").isString()) {
             return null;
         }
         
-        String action = taskObj.get("action").getAsString();
+        String action = taskObj.get("action").getAsString().trim().toLowerCase(Locale.ROOT);
+        if (action.isEmpty()) {
+            return null;
+        }
         Map<String, Object> parameters = new HashMap<>();
         
         if (taskObj.has("parameters") && taskObj.get("parameters").isJsonObject()) {

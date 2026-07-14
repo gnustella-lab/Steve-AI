@@ -4,6 +4,7 @@ import com.steve.ai.SteveMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
@@ -53,6 +54,11 @@ public class StructureTemplateLoader {
      * Load a structure from an NBT file from resources
      */
     public static LoadedTemplate loadFromNBT(ServerLevel level, String structureName) {
+        if (structureName == null || !structureName.matches("[A-Za-z0-9 _-]{1,64}")) {
+            SteveMod.LOGGER.warn("Rejected invalid structure template name: {}", structureName);
+            return null;
+        }
+
         // Try loading from classpath resources first
         String[] possibleNames = {
             structureName + ".nbt",
@@ -62,17 +68,23 @@ public class StructureTemplateLoader {
 
         for (String fileName : possibleNames) {
             String resourcePath = "structures/" + fileName;
-            InputStream resourceStream = StructureTemplateLoader.class.getClassLoader().getResourceAsStream(resourcePath);
-
-            if (resourceStream != null) {
-                SteveMod.LOGGER.info("Found structure in resources: {}", resourcePath);
-                try {
-                    CompoundTag nbt = NbtIo.readCompressed(resourceStream);
-                    resourceStream.close();
-                    return parseNBTStructure(nbt, structureName);
-                } catch (IOException e) {
-                    SteveMod.LOGGER.error("Failed to load structure from resources: {}", resourcePath, e);
+            try (InputStream resourceStream = StructureTemplateLoader.class.getClassLoader()
+                    .getResourceAsStream(resourcePath)) {
+                if (resourceStream == null) {
+                    continue;
                 }
+                SteveMod.LOGGER.info("Found structure in resources: {}", resourcePath);
+                CompoundTag nbt = NbtIo.readCompressed(resourceStream);
+                return parseNBTStructure(nbt, structureName);
+            } catch (IOException e) {
+                SteveMod.LOGGER.error("Failed to load structure from resources: {}", resourcePath, e);
+            }
+        }
+
+        for (String fileName : possibleNames) {
+            File externalFile = new File("structures", fileName);
+            if (externalFile.isFile()) {
+                return loadFromFile(externalFile, structureName);
             }
         }
         
@@ -83,7 +95,9 @@ public class StructureTemplateLoader {
             
             if (template.isPresent()) {                return loadFromMinecraftTemplate(template.get(), structureName);
             }
-        } catch (Exception e) {        }
+        } catch (Exception e) {
+            SteveMod.LOGGER.debug("Minecraft template lookup failed for '{}'", structureName, e);
+        }
         
         SteveMod.LOGGER.warn("Structure '{}' not found. Available structures: {}", 
             structureName, getAvailableStructures());
@@ -137,14 +151,11 @@ public class StructureTemplateLoader {
         
         for (int i = 0; i < paletteList.size(); i++) {
             CompoundTag blockTag = paletteList.getCompound(i);
-            String blockName = blockTag.getString("Name");
-            
             try {
-                ResourceLocation blockLocation = new ResourceLocation(blockName);
-                Block block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(blockLocation);
-                palette.add(block.defaultBlockState());
+                palette.add(NbtUtils.readBlockState(
+                    net.minecraft.core.registries.BuiltInRegistries.BLOCK.asLookup(), blockTag));
             } catch (Exception e) {
-                SteveMod.LOGGER.warn("Unknown block in structure: {}", blockName);
+                SteveMod.LOGGER.warn("Invalid block state in template: {}, using air", blockTag);
                 palette.add(Blocks.AIR.defaultBlockState());
             }
         }

@@ -19,6 +19,7 @@ public class SteveOverlayScreen extends Screen {
         return false; // Don't pause the game
     }
 
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // Don't render anything - the SteveGUI renders via overlay

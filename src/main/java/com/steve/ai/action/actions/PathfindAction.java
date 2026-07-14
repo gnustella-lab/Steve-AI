@@ -36,6 +36,7 @@ public class PathfindAction extends BaseAction {
         }
         
         if (ticksRunning > MAX_TICKS) {
+            steve.getNavigation().stop();
             result = ActionResult.failure("Pathfinding timeout");
             return;
         }
@@ -52,7 +53,13 @@ public class PathfindAction extends BaseAction {
 
     @Override
     public String getDescription() {
-        return "Pathfind to " + targetPos;
+        if (targetPos != null) {
+            return "Pathfind to " + targetPos.getX() + ", " + targetPos.getY() + ", " + targetPos.getZ();
+        }
+        return "Pathfind to "
+            + task.getIntParameter("x", 0) + ", "
+            + task.getIntParameter("y", 0) + ", "
+            + task.getIntParameter("z", 0);
     }
 }
 

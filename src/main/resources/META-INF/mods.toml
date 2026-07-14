@@ -1,29 +1,30 @@
 modLoader="javafml"
-loaderVersion="[47,)"
+loaderVersion="[47,48)"
 license="MIT"
+issueTrackerURL="https://github.com/gnustella-lab/Steve-AI/issues"
 
 [[mods]]
 modId="steve"
-version="1.0.0"
+version="${mod_version}"
 displayName="Steve AI Mod"
 description='''
 AI-controlled Steve entities that can follow natural language commands,
-mine resources, build structures, and behave like real players using OpenAI.
+mine resources, build structures, and use configurable OpenAI, Groq, or Gemini models.
 '''
 authors="Steve AI Team"
-displayURL="https://github.com/yourusername/steve-ai-mod"
+displayURL="https://github.com/gnustella-lab/Steve-AI"
 
 [[dependencies.steve]]
     modId="forge"
     mandatory=true
-    versionRange="[47,)"
+    versionRange="[47,48)"
     ordering="NONE"
     side="BOTH"
 
 [[dependencies.steve]]
     modId="minecraft"
     mandatory=true
-    versionRange="[1.20.1,1.21)"
+    versionRange="[1.20.1,1.20.2)"
     ordering="NONE"
     side="BOTH"
 

@@ -3,6 +3,8 @@ package com.steve.ai.structure;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,7 +58,9 @@ public class StructureGenerators {
             for (int x = 0; x < width; x++) {
                 // Front wall
                 if (x == width / 2 && y <= 2) {
-                    blocks.add(new BlockPlacement(start.offset(x, y, 0), doorMaterial));
+                    blocks.add(new BlockPlacement(start.offset(x, y, 0),
+                        doorMaterial.defaultBlockState().setValue(DoorBlock.HALF,
+                            y == 1 ? DoubleBlockHalf.LOWER : DoubleBlockHalf.UPPER)));
                 } else if (y >= 2 && y <= height - 1 && (x == 2 || x == width - 3)) {
                     blocks.add(new BlockPlacement(start.offset(x, y, 0), windowMaterial));
                 } else {

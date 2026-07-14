@@ -56,14 +56,29 @@ public class WorldKnowledge {
             for (int y = -scanRadius; y <= scanRadius; y += 2) {
                 for (int z = -scanRadius; z <= scanRadius; z += 2) {
                     BlockPos checkPos = stevePos.offset(x, y, z);
-                    BlockState state = level.getBlockState(checkPos);
-                    Block block = state.getBlock();
-                    
-                    if (block != Blocks.AIR && block != Blocks.CAVE_AIR && block != Blocks.VOID_AIR) {
-                        nearbyBlocks.put(block, nearbyBlocks.getOrDefault(block, 0) + 1);
-                    }
+                    recordBlock(level, checkPos);
                 }
             }
+        }
+
+        // A amostragem externa é esparsa, mas blocos imediatamente adjacentes não podem sumir do contexto.
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                for (int z = -1; z <= 1; z++) {
+                    if ((x & 1) == 0 && (y & 1) == 0 && (z & 1) == 0) {
+                        continue; // O centro já foi contado pela amostragem principal.
+                    }
+                    recordBlock(level, stevePos.offset(x, y, z));
+                }
+            }
+        }
+    }
+
+    private void recordBlock(Level level, BlockPos position) {
+        BlockState state = level.getBlockState(position);
+        Block block = state.getBlock();
+        if (block != Blocks.AIR && block != Blocks.CAVE_AIR && block != Blocks.VOID_AIR) {
+            nearbyBlocks.merge(block, 1, Integer::sum);
         }
     }
 

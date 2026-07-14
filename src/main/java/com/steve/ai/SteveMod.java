@@ -1,16 +1,23 @@
 package com.steve.ai;
 
 import com.mojang.logging.LogUtils;
+import com.steve.ai.action.CollaborativeBuildManager;
 import com.steve.ai.command.SteveCommands;
 import com.steve.ai.config.SteveConfig;
+import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.entity.SteveManager;
 import com.steve.ai.llm.async.LLMCache;
 import com.steve.ai.llm.resilience.LLMFallbackHandler;
+import com.steve.ai.memory.StructureRegistry;
+import com.steve.ai.plugin.ActionRegistry;
+import com.steve.ai.plugin.PluginManager;
+import com.steve.ai.security.PermissionManager;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -46,6 +53,9 @@ public class SteveMod {
     /** Shared fallback handler across all Steves (thread-safe). */
     private static final LLMFallbackHandler sharedFallbackHandler = new LLMFallbackHandler();
 
+    /** Shared dependency container used by plugins and every action context. */
+    private static volatile SimpleServiceContainer serviceContainer;
+
     public SteveMod() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
@@ -58,20 +68,36 @@ public class SteveMod {
 
         MinecraftForge.EVENT_BUS.register(this);
         
-        if (net.minecraftforge.fml.loading.FMLEnvironment.dist.isClient()) {
-            MinecraftForge.EVENT_BUS.register(com.steve.ai.client.SteveGUI.class);        }
-        
         steveManager = new SteveManager();
     }
 
-    private void commonSetup(final FMLCommonSetupEvent event) {    }
+    private void commonSetup(final FMLCommonSetupEvent event) {
+        event.enqueueWork(() -> {
+            SimpleServiceContainer services = new SimpleServiceContainer();
+            services.register(LLMCache.class, sharedLLMCache);
+            services.register(LLMFallbackHandler.class, sharedFallbackHandler);
+            serviceContainer = services;
+            PluginManager.getInstance().loadPlugins(ActionRegistry.getInstance(), services);
+        });
+    }
 
     private void entityAttributes(EntityAttributeCreationEvent event) {
         event.put(STEVE_ENTITY.get(), SteveEntity.createAttributes().build());
     }
 
     @SubscribeEvent
-    public void onCommandRegister(RegisterCommandsEvent event) {        SteveCommands.register(event.getDispatcher());    }
+    public void onCommandRegister(RegisterCommandsEvent event) {
+        SteveCommands.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public void onServerStopped(ServerStoppedEvent event) {
+        // Os mundos já foram descarregados, portanto limpamos somente estado global em memória.
+        steveManager.clearTracking();
+        StructureRegistry.clear();
+        CollaborativeBuildManager.clearAllBuilds();
+        PermissionManager.getInstance().clear();
+    }
 
     public static SteveManager getSteveManager() {
         return steveManager;
@@ -85,6 +111,10 @@ public class SteveMod {
     /** Returns the shared fallback handler used by all TaskPlanners. */
     public static LLMFallbackHandler getSharedFallbackHandler() {
         return sharedFallbackHandler;
+    }
+
+    public static SimpleServiceContainer getServiceContainer() {
+        return serviceContainer;
     }
 }
 

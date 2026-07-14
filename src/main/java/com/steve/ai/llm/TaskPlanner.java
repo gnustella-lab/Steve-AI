@@ -2,6 +2,7 @@ package com.steve.ai.llm;
 
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.Task;
+import com.steve.ai.action.TaskValidator;
 import com.steve.ai.config.SteveConfig;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.llm.async.*;
@@ -10,6 +11,7 @@ import com.steve.ai.llm.resilience.ResilientLLMClient;
 import com.steve.ai.memory.WorldKnowledge;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -48,7 +50,7 @@ public class TaskPlanner {
 
         // Create base async clients with correct provider-specific credentials
         AsyncLLMClient baseOpenAI = new AsyncOpenAIClient(openaiApiKey, openaiModel, maxTokens, temperature);
-        AsyncLLMClient baseGroq = new AsyncGroqClient(groqApiKey, groqModel, 500, temperature);
+        AsyncLLMClient baseGroq = new AsyncGroqClient(groqApiKey, groqModel, maxTokens, temperature);
         AsyncLLMClient baseGemini = new AsyncGeminiClient(geminiApiKey, geminiModel, maxTokens, temperature);
 
         // Wrap with resilience patterns
@@ -69,7 +71,7 @@ public class TaskPlanner {
             WorldKnowledge worldKnowledge = new WorldKnowledge(steve);
             String userPrompt = PromptBuilder.buildUserPrompt(steve, command, worldKnowledge);
             
-            String provider = SteveConfig.AI_PROVIDER.get().toLowerCase();
+            String provider = SteveConfig.AI_PROVIDER.get().toLowerCase(Locale.ROOT);
             SteveMod.LOGGER.info("Requesting AI plan for Steve '{}' using {}: {}", steve.getSteveName(), provider, command);
             
             String response = getAIResponse(provider, systemPrompt, userPrompt);
@@ -77,7 +79,8 @@ public class TaskPlanner {
             if (response == null) {
                 SteveMod.LOGGER.error("Failed to get AI response for command: {}", command);
                 return null;
-            }            ResponseParser.ParsedResponse parsedResponse = ResponseParser.parseAIResponse(response);
+            }
+            ResponseParser.ParsedResponse parsedResponse = ResponseParser.parseAIResponse(response);
             
             if (parsedResponse == null) {
                 SteveMod.LOGGER.error("Failed to parse AI response");
@@ -134,7 +137,7 @@ public class TaskPlanner {
             WorldKnowledge worldKnowledge = new WorldKnowledge(steve);
             String userPrompt = PromptBuilder.buildUserPrompt(steve, command, worldKnowledge);
 
-            String provider = SteveConfig.AI_PROVIDER.get().toLowerCase();
+            String provider = SteveConfig.AI_PROVIDER.get().toLowerCase(Locale.ROOT);
             SteveMod.LOGGER.info("[Async] Requesting AI plan for Steve '{}' using {}: {}",
                 steve.getSteveName(), provider, command);
 
@@ -148,6 +151,7 @@ public class TaskPlanner {
 
             Map<String, Object> params = Map.of(
                 "systemPrompt", systemPrompt,
+                "fallbackPrompt", command,
                 "model", modelForProvider,
                 "maxTokens", SteveConfig.MAX_TOKENS.get(),
                 "temperature", SteveConfig.TEMPERATURE.get()
@@ -229,22 +233,7 @@ public class TaskPlanner {
     }
 
     public boolean validateTask(Task task) {
-        String action = task.getAction();
-        
-        return switch (action) {
-            case "pathfind" -> task.hasParameters("x", "y", "z");
-            case "mine" -> task.hasParameters("block", "quantity");
-            case "place" -> task.hasParameters("block", "x", "y", "z");
-            case "craft" -> task.hasParameters("item", "quantity");
-            case "attack" -> task.hasParameters("target");
-            case "follow" -> task.hasParameters("player");
-            case "gather" -> task.hasParameters("resource", "quantity");
-            case "build" -> task.hasParameters("structure", "blocks", "dimensions");
-            default -> {
-                SteveMod.LOGGER.warn("Unknown action type: {}", action);
-                yield false;
-            }
-        };
+        return TaskValidator.isValid(task);
     }
 
     public List<Task> validateAndFilterTasks(List<Task> tasks) {

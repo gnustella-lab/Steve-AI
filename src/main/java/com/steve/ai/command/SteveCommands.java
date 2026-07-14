@@ -19,17 +19,21 @@ public class SteveCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("steve")
             .then(Commands.literal("spawn")
+                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::spawnSteve)))
             .then(Commands.literal("remove")
+                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::removeSteve)))
             .then(Commands.literal("list")
                 .executes(SteveCommands::listSteves))
             .then(Commands.literal("stop")
+                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::stopSteve)))
             .then(Commands.literal("tell")
+                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .then(Commands.argument("command", StringArgumentType.greedyString())
                         .executes(SteveCommands::tellSteve))))
@@ -176,9 +180,8 @@ public class SteveCommands {
             // Disabled command feedback message
             // source.sendSuccess(() -> Component.literal("Instructing " + name + ": " + command), true);
             
-            new Thread(() -> {
-                steve.getActionExecutor().processNaturalLanguageCommand(command);
-            }).start();
+            // O comando já roda na thread do servidor. Apenas a chamada HTTP é assíncrona.
+            steve.getActionExecutor().processNaturalLanguageCommand(command);
             
             return 1;
         } else {

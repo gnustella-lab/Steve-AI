@@ -81,6 +81,10 @@ public class CombatAction extends BaseAction {
                 double dx = target.getX() - steve.getX();
                 double dz = target.getZ() - steve.getZ();
                 double dist = Math.sqrt(dx*dx + dz*dz);
+                if (dist < 1.0e-6) {
+                    ticksStuck = 0;
+                    return;
+                }
                 double moveAmount = Math.min(4.0, dist - ATTACK_RANGE);
                 
                 steve.teleportTo(
@@ -99,12 +103,10 @@ public class CombatAction extends BaseAction {
         lastZ = currentZ;
         
         if (distance <= ATTACK_RANGE) {
-            steve.doHurtTarget(target);
-            steve.swing(net.minecraft.world.InteractionHand.MAIN_HAND, true);
-            
             // Attack 3 times per second (every 6-7 ticks)
             if (ticksRunning % 7 == 0) {
                 steve.doHurtTarget(target);
+                steve.swing(net.minecraft.world.InteractionHand.MAIN_HAND, true);
             }
         }
     }
@@ -122,7 +124,7 @@ public class CombatAction extends BaseAction {
 
     @Override
     public String getDescription() {
-        return "Attack " + targetType;
+        return "Attack " + (targetType != null ? targetType : task.getStringParameter("target"));
     }
 
     private void findTarget() {
@@ -159,6 +161,9 @@ public class CombatAction extends BaseAction {
             return false;
         }
         
+        if (targetType == null || targetType.isBlank()) {
+            return false;
+        }
         String targetLower = targetType.toLowerCase();
         
         // Match ANY hostile mob
