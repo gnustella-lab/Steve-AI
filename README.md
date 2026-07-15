@@ -2,6 +2,8 @@
 
 We built Cursor for Minecraft. Instead of AI that helps you write code, you get AI agents that actually play the game with you.
 
+This repository is a maintained fork of [YuvDwi/Steve](https://github.com/YuvDwi/Steve), focused on production hardening, safer agent execution, automated testing, reproducible releases, and ongoing open-source maintenance.
+
 https://github.com/user-attachments/assets/23f0ccdd-7a7a-4d49-9dd9-215ebf67265a
 
 ## What It Does
@@ -148,8 +150,8 @@ Custom overlay GUI activated with K key. Uses Minecraft's Screen class with cust
 Use Java 17 with a local Gradle 8.x installation. ForgeGradle 6 does not support Gradle 9+, so `gradle build` fails when your installed Gradle is too new. Gradle 8.4 is the known-good version for this project:
 
 ```bash
-git clone https://github.com/YuvDwi/Steve.git
-cd Steve
+git clone https://github.com/gnustella-lab/Steve-AI.git
+cd Steve-AI
 JAVA_HOME=/path/to/jdk17 gradle build
 ```
 
@@ -186,7 +188,7 @@ We welcome contributions! Here's how to get started:
 
 ### Reporting Bugs
 
-1. Check [existing issues](https://github.com/YuvDwi/Steve/issues) first
+1. Check [existing issues](https://github.com/gnustella-lab/Steve-AI/issues) first
 2. Include:
    - Minecraft/Forge/Steve AI versions
    - Steps to reproduce
@@ -197,8 +199,8 @@ We welcome contributions! Here's how to get started:
 
 1. **Fork and clone**
    ```bash
-   git clone https://github.com/YourUsername/Steve.git
-   cd Steve
+   git clone https://github.com/YourUsername/Steve-AI.git
+   cd Steve-AI
    ```
 
 2. **Create feature branch**
@@ -302,4 +304,4 @@ MIT
 
 ## Issues
 
-Found a bug? Open an issue: https://github.com/YuvDwi/Steve/issues
+Found a bug? [Open an issue in this repository](https://github.com/gnustella-lab/Steve-AI/issues).
