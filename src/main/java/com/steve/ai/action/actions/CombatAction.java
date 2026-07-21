@@ -52,7 +52,7 @@ public class CombatAction extends BaseAction {
             steve.getNavigation().stop();
             com.steve.ai.SteveMod.LOGGER.info("Steve '{}' combat complete, invulnerability disabled", 
                 steve.getSteveName());
-            result = ActionResult.success("Combat complete");
+            result = ActionResult.success("Combat complete").build();
             return;
         }
         

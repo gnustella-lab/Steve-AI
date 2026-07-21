@@ -21,7 +21,7 @@ public class TaskPlanner {
     private final GeminiClient geminiClient;
     private final GroqClient groqClient;
 
-    // NEW: Async resilient clients
+    // Resilient clients used by the non-blocking planning path.
     private final AsyncLLMClient asyncOpenAIClient;
     private final AsyncLLMClient asyncGroqClient;
     private final AsyncLLMClient asyncGeminiClient;
@@ -72,7 +72,8 @@ public class TaskPlanner {
             String userPrompt = PromptBuilder.buildUserPrompt(steve, command, worldKnowledge);
             
             String provider = SteveConfig.AI_PROVIDER.get().toLowerCase(Locale.ROOT);
-            SteveMod.LOGGER.info("Requesting AI plan for Steve '{}' using {}: {}", steve.getSteveName(), provider, command);
+            SteveMod.LOGGER.info(
+                "Requesting AI plan for Steve '{}' using {}: {}", steve.getSteveName(), provider, command);
             
             String response = getAIResponse(provider, systemPrompt, userPrompt);
             

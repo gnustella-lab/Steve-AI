@@ -7,10 +7,9 @@ import com.steve.ai.entity.SteveEntity;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.HashMap;
-import java.util.List;
 
 /**
- * Idle behavior for Steve - follows the nearest player when not working.
+ * Idle behavior for Steve: follows the active controller or owner when not working.
  * This action runs continuously until a task is given.
  * Teleports to player if too far away.
  */
@@ -109,36 +108,14 @@ public class IdleFollowAction extends BaseAction {
     }
 
     /**
-     * Find the nearest player to follow
+     * Resolves the active controller, owner, or the legacy nearest-player fallback.
      */
     private void findNearestPlayer() {
-        List<? extends Player> players = steve.level().players();
-        
-        if (players.isEmpty()) {
-            targetPlayer = null;
-            return;
-        }
-        
-        Player nearest = null;
-        double nearestDistance = Double.MAX_VALUE;
-        
-        for (Player player : players) {
-            if (!player.isAlive() || player.isRemoved() || player.isSpectator()) {
-                continue;
-            }
-            
-            double distance = steve.distanceTo(player);
-            if (distance < nearestDistance) {
-                nearest = player;
-                nearestDistance = distance;
-            }
-        }
-        
-        if (nearest != targetPlayer && nearest != null) {
+        Player preferred = steve.getPreferredPlayer();
+        if (preferred != targetPlayer && preferred != null) {
             SteveMod.LOGGER.debug("Steve '{}' now following {} (idle)", 
-                steve.getSteveName(), nearest.getName().getString());
+                steve.getSteveName(), preferred.getName().getString());
         }
-        
-        targetPlayer = nearest;
+        targetPlayer = preferred;
     }
 }

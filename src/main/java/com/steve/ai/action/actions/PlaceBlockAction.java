@@ -75,7 +75,7 @@ public class PlaceBlockAction extends BaseAction {
             result = ActionResult.failure("Minecraft rejected block placement");
             return;
         }
-        result = ActionResult.success("Placed " + blockToPlace.getName().getString());
+        result = ActionResult.success("Placed " + blockToPlace.getName().getString()).build();
     }
 
     @Override

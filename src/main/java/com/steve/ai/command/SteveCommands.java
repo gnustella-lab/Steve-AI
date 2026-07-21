@@ -12,7 +12,10 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.UUID;
 
 public class SteveCommands {
     
@@ -23,17 +26,14 @@ public class SteveCommands {
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::spawnSteve)))
             .then(Commands.literal("remove")
-                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::removeSteve)))
             .then(Commands.literal("list")
                 .executes(SteveCommands::listSteves))
             .then(Commands.literal("stop")
-                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::stopSteve)))
             .then(Commands.literal("tell")
-                .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("name", StringArgumentType.string())
                     .then(Commands.argument("command", StringArgumentType.greedyString())
                         .executes(SteveCommands::tellSteve))))
@@ -113,12 +113,14 @@ public class SteveCommands {
         }
         Vec3 spawnPos = sourcePos;
         
-        SteveEntity steve = manager.spawnSteve(serverLevel, spawnPos, name);
+        UUID ownerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
+        SteveEntity steve = manager.spawnSteve(serverLevel, spawnPos, name, ownerUuid);
         if (steve != null) {
             source.sendSuccess(() -> Component.literal("Spawned Steve: " + name), true);
             return 1;
         } else {
-            source.sendFailure(Component.literal("Failed to spawn Steve. Name may already exist or max limit reached."));
+            source.sendFailure(Component.literal(
+                "Failed to spawn Steve. Name may already exist or max limit reached."));
             return 0;
         }
     }
@@ -128,8 +130,16 @@ public class SteveCommands {
         CommandSourceStack source = context.getSource();
         
         SteveManager manager = SteveMod.getSteveManager();
+        SteveEntity steve = manager.getSteve(name);
+        if (steve == null) {
+            source.sendFailure(Component.literal("Steve not found: " + name));
+            return 0;
+        }
+        if (!canControl(source, steve)) {
+            return 0;
+        }
         if (manager.removeSteve(name)) {
-            source.sendSuccess(() -> Component.literal("Removed Steve: " + name), true);
+            source.sendSuccess(() -> Component.literal("Removed Steve: " + name), false);
             return 1;
         } else {
             source.sendFailure(Component.literal("Steve not found: " + name));
@@ -145,7 +155,8 @@ public class SteveCommands {
         if (names.isEmpty()) {
             source.sendSuccess(() -> Component.literal("No active Steves"), false);
         } else {
-            source.sendSuccess(() -> Component.literal("Active Steves (" + names.size() + "): " + String.join(", ", names)), false);
+            source.sendSuccess(() -> Component.literal(
+                "Active Steves (" + names.size() + "): " + String.join(", ", names)), false);
         }
         return 1;
     }
@@ -158,9 +169,12 @@ public class SteveCommands {
         SteveEntity steve = manager.getSteve(name);
         
         if (steve != null) {
+            if (!canControl(source, steve)) {
+                return 0;
+            }
             steve.getActionExecutor().stopCurrentAction();
             steve.getMemory().clearTaskQueue();
-            source.sendSuccess(() -> Component.literal("Stopped Steve: " + name), true);
+            source.sendSuccess(() -> Component.literal("Stopped Steve: " + name), false);
             return 1;
         } else {
             source.sendFailure(Component.literal("Steve not found: " + name));
@@ -177,17 +191,28 @@ public class SteveCommands {
         SteveEntity steve = manager.getSteve(name);
         
         if (steve != null) {
-            // Disabled command feedback message
-            // source.sendSuccess(() -> Component.literal("Instructing " + name + ": " + command), true);
-            
+            if (!canControl(source, steve)) {
+                return 0;
+            }
             // O comando já roda na thread do servidor. Apenas a chamada HTTP é assíncrona.
-            steve.getActionExecutor().processNaturalLanguageCommand(command);
+            UUID controllerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
+            steve.getActionExecutor().processNaturalLanguageCommand(command, controllerUuid);
             
             return 1;
         } else {
             source.sendFailure(Component.literal("Steve not found: " + name));
             return 0;
         }
+    }
+
+    private static boolean canControl(CommandSourceStack source, SteveEntity steve) {
+        boolean administrator = source.hasPermission(2);
+        UUID playerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
+        if (steve.canBeControlledBy(playerUuid, administrator)) {
+            return true;
+        }
+        source.sendFailure(Component.literal("You are not authorized to control Steve: " + steve.getSteveName()));
+        return false;
     }
 }
 

@@ -47,3 +47,6 @@
     
     # Maximum number of Steves that can be active simultaneously
     maxActiveSteves = 10
+
+    # Inventory slots for newly created Steves. Existing larger inventories are preserved.
+    inventorySlots = 27

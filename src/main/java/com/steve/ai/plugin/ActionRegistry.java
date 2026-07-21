@@ -83,9 +83,43 @@ public class ActionRegistry {
      * @param actionName Action name (e.g., "mine", "build")
      * @param factory    Factory to create action instances
      * @throws IllegalArgumentException if actionName or factory is null
+     * @deprecated Register an {@link ActionDescriptor} with its factory instead.
      */
+    @Deprecated(forRemoval = false)
     public void register(String actionName, ActionFactory factory) {
         register(actionName, factory, 0, "unknown");
+    }
+
+    /**
+     * Registers a factory and its complete planning and validation contract atomically.
+     *
+     * <p>This API never replaces an action owned by another plugin. A conflicting plugin must choose a distinct
+     * action name instead of relying on load order.</p>
+     *
+     * @param descriptor action metadata and parameter schema
+     * @param factory action factory
+     * @param priority priority retained for diagnostics and same-plugin reloads
+     */
+    public void register(ActionDescriptor descriptor, ActionFactory factory, int priority) {
+        Objects.requireNonNull(descriptor, "descriptor");
+        Objects.requireNonNull(factory, "factory");
+        String normalizedName = normalize(descriptor.name());
+
+        factories.compute(normalizedName, (key, existing) -> {
+            if (existing != null && !existing.pluginId.equals(descriptor.pluginId())) {
+                throw new IllegalStateException("Action '" + normalizedName + "' is already registered by plugin '"
+                    + existing.pluginId + "'");
+            }
+            if (existing != null && priority < existing.priority) {
+                LOGGER.warn("Ignoring lower-priority reload of action '{}' from plugin '{}'",
+                    normalizedName, descriptor.pluginId());
+                return existing;
+            }
+            actionToPlugin.put(normalizedName, descriptor.pluginId());
+            LOGGER.info("Registered described action '{}' from plugin '{}' (schema {}, priority {})",
+                normalizedName, descriptor.pluginId(), descriptor.schemaVersion(), priority);
+            return new FactoryEntry(factory, priority, descriptor.pluginId(), descriptor);
+        });
     }
 
     /**
@@ -101,6 +135,7 @@ public class ActionRegistry {
      * @param pluginId   ID of the plugin registering this action
      * @throws IllegalArgumentException if actionName or factory is null
      */
+    @Deprecated(forRemoval = false)
     public void register(String actionName, ActionFactory factory, int priority, String pluginId) {
         if (actionName == null || actionName.isBlank()) {
             throw new IllegalArgumentException("Action name cannot be null or blank");
@@ -109,14 +144,17 @@ public class ActionRegistry {
             throw new IllegalArgumentException("Factory cannot be null");
         }
 
-        String normalizedName = actionName.toLowerCase().trim();
+        String normalizedName = normalize(actionName);
+        LOGGER.warn("Plugin '{}' used deprecated metadata-free registration for action '{}'; "
+            + "migrate to ActionDescriptor", pluginId, normalizedName);
+        ActionDescriptor descriptor = ActionDescriptor.legacy(normalizedName, pluginId);
 
         factories.compute(normalizedName, (key, existing) -> {
             if (existing == null) {
                 LOGGER.info("Registered action '{}' from plugin '{}' (priority: {})",
                     normalizedName, pluginId, priority);
                 actionToPlugin.put(normalizedName, pluginId);
-                return new FactoryEntry(factory, priority, pluginId);
+                return new FactoryEntry(factory, priority, pluginId, descriptor);
             }
 
             // Conflict resolution: higher priority wins
@@ -124,7 +162,7 @@ public class ActionRegistry {
                 LOGGER.info("Action '{}' overridden by plugin '{}' (priority {} > {})",
                     normalizedName, pluginId, priority, existing.priority);
                 actionToPlugin.put(normalizedName, pluginId);
-                return new FactoryEntry(factory, priority, pluginId);
+                return new FactoryEntry(factory, priority, pluginId, descriptor);
             } else if (priority == existing.priority) {
                 LOGGER.warn("Action '{}' already registered by '{}' with same priority, keeping existing",
                     normalizedName, existing.pluginId);
@@ -146,7 +184,7 @@ public class ActionRegistry {
     public boolean unregister(String actionName) {
         if (actionName == null) return false;
 
-        String normalizedName = actionName.toLowerCase().trim();
+        String normalizedName = normalize(actionName);
         FactoryEntry removed = factories.remove(normalizedName);
         actionToPlugin.remove(normalizedName);
 
@@ -172,7 +210,7 @@ public class ActionRegistry {
             return null;
         }
 
-        String normalizedName = actionName.toLowerCase().trim();
+        String normalizedName = normalize(actionName);
         FactoryEntry entry = factories.get(normalizedName);
 
         if (entry == null) {
@@ -198,7 +236,69 @@ public class ActionRegistry {
      */
     public boolean hasAction(String actionName) {
         if (actionName == null) return false;
-        return factories.containsKey(actionName.toLowerCase().trim());
+        return factories.containsKey(normalize(actionName));
+    }
+
+    /** Returns metadata for an action name. */
+    public Optional<ActionDescriptor> getDescriptor(String actionName) {
+        if (actionName == null) {
+            return Optional.empty();
+        }
+        FactoryEntry entry = factories.get(normalize(actionName));
+        return entry == null ? Optional.empty() : Optional.of(entry.descriptor);
+    }
+
+    /** Returns all descriptors in deterministic action-name order. */
+    public List<ActionDescriptor> getDescriptors() {
+        return factories.values().stream()
+            .map(entry -> entry.descriptor)
+            .sorted(Comparator.comparing(ActionDescriptor::name))
+            .toList();
+    }
+
+    /**
+     * Returns only actions with an explicit parameter contract, safe for LLM planning.
+     * Metadata-free registrations remain available to trusted plugin code during migration.
+     */
+    public List<ActionDescriptor> getPlannableDescriptors() {
+        return getDescriptors().stream()
+            .filter(descriptor -> !"legacy".equals(descriptor.schemaVersion()))
+            .toList();
+    }
+
+    /** Validates one task against the schema owned by its registered factory. */
+    public JsonSchema.ValidationResult validate(Task task) {
+        if (task == null || task.getAction() == null || task.getParameters() == null) {
+            return JsonSchema.ValidationResult.invalid("task, action and parameters are required");
+        }
+        FactoryEntry entry = factories.get(normalize(task.getAction()));
+        if (entry == null) {
+            return JsonSchema.ValidationResult.invalid("unknown action: " + task.getAction());
+        }
+        if ("legacy".equals(entry.descriptor.schemaVersion())) {
+            return JsonSchema.ValidationResult.invalid(
+                "legacy action requires an explicit schema before LLM planning");
+        }
+        return entry.descriptor.parameterSchema().validate(task.getParameters());
+    }
+
+    /**
+     * Executes one plugin's registrations atomically and restores the previous registry on failure.
+     * Plugin loading is serialized by {@link PluginManager}; this guard also synchronizes direct tests.
+     */
+    synchronized void runRegistrationTransaction(Runnable registration) {
+        Objects.requireNonNull(registration, "registration");
+        Map<String, FactoryEntry> factorySnapshot = Map.copyOf(factories);
+        Map<String, String> ownerSnapshot = Map.copyOf(actionToPlugin);
+        try {
+            registration.run();
+        } catch (RuntimeException | Error failure) {
+            factories.clear();
+            factories.putAll(factorySnapshot);
+            actionToPlugin.clear();
+            actionToPlugin.putAll(ownerSnapshot);
+            throw failure;
+        }
     }
 
     /**
@@ -227,7 +327,7 @@ public class ActionRegistry {
      */
     public String getPluginForAction(String actionName) {
         if (actionName == null) return null;
-        return actionToPlugin.get(actionName.toLowerCase().trim());
+        return actionToPlugin.get(normalize(actionName));
     }
 
     /**
@@ -301,11 +401,17 @@ public class ActionRegistry {
         final ActionFactory factory;
         final int priority;
         final String pluginId;
+        final ActionDescriptor descriptor;
 
-        FactoryEntry(ActionFactory factory, int priority, String pluginId) {
+        FactoryEntry(ActionFactory factory, int priority, String pluginId, ActionDescriptor descriptor) {
             this.factory = factory;
             this.priority = priority;
             this.pluginId = pluginId;
+            this.descriptor = descriptor;
         }
+    }
+
+    private static String normalize(String actionName) {
+        return actionName.toLowerCase(Locale.ROOT).trim();
     }
 }

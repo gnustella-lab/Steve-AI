@@ -109,7 +109,7 @@ public class BuildStructureAction extends BaseAction {
             depth = task.getIntParameter("depth", 5);
         }
         
-        net.minecraft.world.entity.player.Player nearestPlayer = findNearestPlayer();
+        net.minecraft.world.entity.player.Player nearestPlayer = findPreferredPlayer();
         BlockPos groundPos;
         
         if (nearestPlayer != null) {
@@ -207,7 +207,7 @@ public class BuildStructureAction extends BaseAction {
                     registerCompletedStructure();
                 }
                 steve.setFlying(false);
-                result = ActionResult.success("Built " + structureType + " collaboratively!");
+                result = ActionResult.success("Built " + structureType + " collaboratively!").build();
                 return;
             }
             
@@ -244,17 +244,42 @@ public class BuildStructureAction extends BaseAction {
                         collaborativeBuild, steve.getSteveName(), placement);
                     steve.setFlying(false);
                     abandonCollaborativeBuild();
-                    result = ActionResult.failure("Build position is inside a protected region", false);
+                    result = ActionResult.failure(ActionResult.ERROR_PROTECTED, "Build position is inside a protected region")
+                        .requiresReplanning(true)
+                        .build();
                     return;
+                }
+
+                boolean isSurvival = com.steve.ai.config.SteveConfig.SURVIVAL_CONSTRUCTION.get()
+                    && !com.steve.ai.config.SteveConfig.CREATIVE_CONSTRUCTION.get();
+                if (isSurvival && !existingState.equals(blockState) && !blockState.isAir()) {
+                    net.minecraft.world.item.Item neededItem = blockState.getBlock().asItem();
+                    if (neededItem != net.minecraft.world.item.Items.AIR) {
+                        if (!steve.getSteveInventory().consume(neededItem)) {
+                            CollaborativeBuildManager.returnBlock(
+                                collaborativeBuild, steve.getSteveName(), placement);
+                            steve.setFlying(false);
+                            abandonCollaborativeBuild();
+                            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                                "Missing building material in inventory: " + blockState.getBlock().getName().getString())
+                                .retryable(true)
+                                .requiresReplanning(true)
+                                .build();
+                            return;
+                        }
+                    }
                 }
 
                 boolean placed = existingState.equals(blockState) || steve.level().setBlock(pos, blockState, 3);
                 if (!placed) {
+                    if (isSurvival && !existingState.equals(blockState) && !blockState.isAir()) {
+                        steve.getSteveInventory().insert(new net.minecraft.world.item.ItemStack(blockState.getBlock().asItem()));
+                    }
                     CollaborativeBuildManager.returnBlock(
                         collaborativeBuild, steve.getSteveName(), placement);
                     steve.setFlying(false);
                     abandonCollaborativeBuild();
-                    result = ActionResult.failure("Minecraft rejected block placement at " + pos);
+                    result = ActionResult.failure(ActionResult.ERROR_BLOCKED, "Minecraft rejected block placement at " + pos).build();
                     return;
                 }
 
@@ -543,31 +568,10 @@ public class BuildStructureAction extends BaseAction {
     }
     
     /**
-     * Find the nearest player to build in front of
+     * Finds the authorized player to build in front of.
      */
-    private net.minecraft.world.entity.player.Player findNearestPlayer() {
-        java.util.List<? extends net.minecraft.world.entity.player.Player> players = steve.level().players();
-        
-        if (players.isEmpty()) {
-            return null;
-        }
-        
-        net.minecraft.world.entity.player.Player nearest = null;
-        double nearestDistance = Double.MAX_VALUE;
-        
-        for (net.minecraft.world.entity.player.Player player : players) {
-            if (!player.isAlive() || player.isRemoved() || player.isSpectator()) {
-                continue;
-            }
-            
-            double distance = steve.distanceTo(player);
-            if (distance < nearestDistance) {
-                nearest = player;
-                nearestDistance = distance;
-            }
-        }
-        
-        return nearest;
+    private net.minecraft.world.entity.player.Player findPreferredPlayer() {
+        return steve.getPreferredPlayer();
     }
     
 }

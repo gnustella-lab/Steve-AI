@@ -19,6 +19,11 @@ public class SteveManager {
     }
 
     public SteveEntity spawnSteve(ServerLevel level, Vec3 position, String name) {
+        return spawnSteve(level, position, name, null);
+    }
+
+    /** Spawns a Steve with an optional UUID owner. Null ownership is reserved for console and legacy flows. */
+    public SteveEntity spawnSteve(ServerLevel level, Vec3 position, String name, UUID ownerUuid) {
         SteveMod.LOGGER.info("Current active Steves: {}", activeSteves.size());
 
         if (name == null || !name.matches("[A-Za-z0-9_-]{1,32}")) {
@@ -41,6 +46,9 @@ public class SteveManager {
         try {
             SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), level);
             steve.setSteveName(name.trim());
+            if (ownerUuid != null) {
+                steve.setOwnerUuid(ownerUuid);
+            }
             steve.setPos(position.x, position.y, position.z);
 
             if (!level.addFreshEntity(steve)) {
@@ -67,22 +75,26 @@ public class SteveManager {
     }
 
     public boolean removeSteve(String name) {
-        SteveEntity steve = name == null ? null : activeSteves.remove(normalizeName(name));
-        if (steve != null) {
-            stevesByUUID.remove(steve.getUUID());
-            steve.discard();
-            return true;
+        String normalizedName = name == null ? null : normalizeName(name);
+        SteveEntity steve = normalizedName == null ? null : activeSteves.get(normalizedName);
+        if (steve == null || !steve.dropInventoryContents()) {
+            return false;
         }
-        return false;
+        activeSteves.remove(normalizedName, steve);
+        stevesByUUID.remove(steve.getUUID(), steve);
+        steve.discard();
+        return true;
     }
 
     public void clearAllSteves() {
         SteveMod.LOGGER.info("Clearing {} Steve entities", activeSteves.size());
-        for (SteveEntity steve : activeSteves.values()) {
-            steve.discard();
+        for (SteveEntity steve : new ArrayList<>(activeSteves.values())) {
+            if (steve.dropInventoryContents()) {
+                activeSteves.remove(normalizeName(steve.getSteveName()), steve);
+                stevesByUUID.remove(steve.getUUID(), steve);
+                steve.discard();
+            }
         }
-        activeSteves.clear();
-        stevesByUUID.clear();
     }
 
     /** Limpa apenas os índices em memória, preservando entidades salvas no mundo. */

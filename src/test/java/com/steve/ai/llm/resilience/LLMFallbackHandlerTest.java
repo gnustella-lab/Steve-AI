@@ -1,14 +1,30 @@
 package com.steve.ai.llm.resilience;
 
 import com.steve.ai.action.Task;
+import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.llm.ResponseParser;
 import com.steve.ai.llm.async.LLMResponse;
+import com.steve.ai.plugin.ActionRegistry;
+import com.steve.ai.plugin.CoreActionsPlugin;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class LLMFallbackHandlerTest {
+
+    @BeforeEach
+    void registerCoreActions() {
+        ActionRegistry.getInstance().clear();
+        new CoreActionsPlugin().onLoad(ActionRegistry.getInstance(), new SimpleServiceContainer());
+    }
+
+    @AfterEach
+    void clearRegistry() {
+        ActionRegistry.getInstance().clear();
+    }
 
     @Test
     void miningFallbackUsesTheExecutableTaskSchema() {

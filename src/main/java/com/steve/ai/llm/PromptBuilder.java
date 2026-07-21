@@ -2,60 +2,44 @@ package com.steve.ai.llm;
 
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.memory.WorldKnowledge;
+import com.steve.ai.plugin.ActionDescriptor;
+import com.steve.ai.plugin.ActionRegistry;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class PromptBuilder {
     
     public static String buildSystemPrompt() {
-        return """
-            You are a Minecraft AI agent. Respond ONLY with valid JSON, no extra text.
-            
+        StringBuilder prompt = new StringBuilder("""
+            You are a Minecraft AI agent. Respond ONLY with one valid JSON object and no extra text.
+
             FORMAT (strict JSON):
-            {"reasoning": "brief thought", "plan": "action description", "tasks": [{"action": "type", "parameters": {...}}]}
-            
-            ACTIONS:
-            - attack: {"target": "hostile"} (for any mob/monster)
-            - build: {"structure": "house", "blocks": ["oak_planks", "cobblestone", "glass_pane"], "dimensions": [9, 6, 9]}
-            - mine: {"block": "iron", "quantity": 8} (resources: iron, diamond, coal, gold, copper, redstone, emerald)
-            - follow: {"player": "NAME"}
-            - pathfind: {"x": 0, "y": 0, "z": 0}
-            
+            {"summary":"short operational summary","tasks":[{"action":"registered action","parameters":{}}]}
+
             RULES:
-            1. ALWAYS use "hostile" for attack target (mobs, monsters, creatures)
-            2. STRUCTURE OPTIONS: house, oldhouse, powerplant, castle, tower, barn, modern
-            3. house/oldhouse/powerplant = pre-built NBT templates (auto-size)
-            4. castle/tower/barn/modern = procedural (castle=14x10x14, tower=6x6x16, barn=12x8x14)
-            5. Use 2-3 block types: oak_planks, cobblestone, glass_pane, stone_bricks
-            6. NO extra pathfind tasks unless explicitly requested
-            7. Keep reasoning under 15 words
-            8. COLLABORATIVE BUILDING: Multiple Steves can work on same structure simultaneously
-            9. MINING: Can mine any ore (iron, diamond, coal, etc)
-            
-            EXAMPLES (copy these formats exactly):
-            
-            Input: "build a house"
-            {"reasoning": "Building standard house near player", "plan": "Construct house", "tasks": [{"action": "build", "parameters": {"structure": "house", "blocks": ["oak_planks", "cobblestone", "glass_pane"], "dimensions": [9, 6, 9]}}]}
-            
-            Input: "get me iron"
-            {"reasoning": "Mining iron ore for player", "plan": "Mine iron", "tasks": [{"action": "mine", "parameters": {"block": "iron", "quantity": 16}}]}
-            
-            Input: "find diamonds"
-            {"reasoning": "Searching for diamond ore", "plan": "Mine diamonds", "tasks": [{"action": "mine", "parameters": {"block": "diamond", "quantity": 8}}]}
-            
-            Input: "kill mobs" 
-            {"reasoning": "Hunting hostile creatures", "plan": "Attack hostiles", "tasks": [{"action": "attack", "parameters": {"target": "hostile"}}]}
-            
-            Input: "murder creeper"
-            {"reasoning": "Targeting creeper", "plan": "Attack creeper", "tasks": [{"action": "attack", "parameters": {"target": "creeper"}}]}
-            
-            Input: "follow me"
-            {"reasoning": "Player needs me", "plan": "Follow player", "tasks": [{"action": "follow", "parameters": {"player": "USE_NEARBY_PLAYER_NAME"}}]}
-            
-            CRITICAL: Output ONLY valid JSON. No markdown, no explanations, no line breaks in JSON.
-            """;
+            1. Use only registered actions and parameters declared by their schemas.
+            2. Do not emit Java, commands, scripts, file paths, reflection targets or private chain-of-thought.
+            3. Keep summary under 160 characters and tasks in the order they should execute.
+            4. Do not add movement tasks unless the objective requires them.
+
+            REGISTERED ACTIONS:
+            """);
+        for (ActionDescriptor descriptor : ActionRegistry.getInstance().getPlannableDescriptors()) {
+            prompt.append("- ").append(descriptor.name()).append(": ")
+                .append(descriptor.description()).append("\n  parameters: ")
+                .append(descriptor.parameterSchema().toJson()).append('\n');
+            for (String example : descriptor.examples()) {
+                prompt.append("  example: ").append(example).append('\n');
+            }
+        }
+        prompt.append("CRITICAL: Output only JSON. No Markdown fences or explanations.");
+        return prompt.toString();
     }
 
     public static String buildUserPrompt(SteveEntity steve, String command, WorldKnowledge worldKnowledge) {
@@ -68,11 +52,15 @@ public class PromptBuilder {
         prompt.append("Nearby Entities: ").append(worldKnowledge.getNearbyEntitiesSummary()).append("\n");
         prompt.append("Nearby Blocks: ").append(worldKnowledge.getNearbyBlocksSummary()).append("\n");
         prompt.append("Biome: ").append(worldKnowledge.getBiomeName()).append("\n");
+        prompt.append("Inventory:\n").append(formatInventory(steve)).append("\n");
+        prompt.append("Armor: ").append(formatArmor(steve)).append("\n");
+        prompt.append("Main hand: ").append(formatStack(steve.getMainHandItem())).append("\n");
+        prompt.append("Off hand: ").append(formatStack(steve.getOffhandItem())).append("\n");
         
         prompt.append("\n=== PLAYER COMMAND ===\n");
         prompt.append("\"").append(command).append("\"\n");
         
-        prompt.append("\n=== YOUR RESPONSE (with reasoning) ===\n");
+        prompt.append("\n=== YOUR JSON RESPONSE ===\n");
         
         return prompt.toString();
     }
@@ -82,7 +70,33 @@ public class PromptBuilder {
     }
 
     private static String formatInventory(SteveEntity steve) {
-        return "[empty]";
+        return steve.getSteveInventory().summarize(20);
+    }
+
+    private static String formatArmor(SteveEntity steve) {
+        List<String> armor = new ArrayList<>();
+        for (EquipmentSlot slot : List.of(
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET)) {
+            ItemStack stack = steve.getItemBySlot(slot);
+            if (!stack.isEmpty()) {
+                armor.add(formatStack(stack));
+            }
+        }
+        return armor.isEmpty() ? "empty" : String.join(", ", armor);
+    }
+
+    private static String formatStack(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "empty";
+        }
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        String displayId = "minecraft".equals(itemId.getNamespace()) ? itemId.getPath() : itemId.toString();
+        if (!stack.isDamageableItem()) {
+            return displayId + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
+        }
+        int durability = Math.max(0, Math.round(100.0f * (stack.getMaxDamage() - stack.getDamageValue())
+            / stack.getMaxDamage()));
+        return displayId + ", durability " + durability + "%";
     }
 }
 

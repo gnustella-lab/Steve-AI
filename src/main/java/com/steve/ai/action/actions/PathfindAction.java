@@ -31,7 +31,7 @@ public class PathfindAction extends BaseAction {
         ticksRunning++;
         
         if (steve.blockPosition().closerThan(targetPos, 2.0)) {
-            result = ActionResult.success("Reached target position");
+            result = ActionResult.success("Reached target position").build();
             return;
         }
         
