@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -32,6 +33,8 @@ public class MineBlockAction extends BaseAction {
     private int miningDirectionX = 0; // Direction to mine (-1, 0, or 1)
     private int miningDirectionZ = 0; // Direction to mine (-1, 0, or 1)
     private int ticksSinceLastMine = 0; // Delay between mining blocks
+    private ItemStack previousMainHandItem;
+    private boolean temporaryToolEquipped;
     private static final int MAX_TICKS = 24000; // 20 minutes for deep mining
     private static final int TORCH_INTERVAL = 100; // Place torch every 5 seconds (100 ticks)
     private static final int MIN_LIGHT_LEVEL = 8;
@@ -75,10 +78,10 @@ public class MineBlockAction extends BaseAction {
             return;
         }
         
-        net.minecraft.world.entity.player.Player nearestPlayer = findNearestPlayer();
-        if (nearestPlayer != null) {
-            net.minecraft.world.phys.Vec3 eyePos = nearestPlayer.getEyePosition(1.0F);
-            net.minecraft.world.phys.Vec3 lookVec = nearestPlayer.getLookAngle();
+        net.minecraft.world.entity.player.Player preferredPlayer = findPreferredPlayer();
+        if (preferredPlayer != null) {
+            net.minecraft.world.phys.Vec3 eyePos = preferredPlayer.getEyePosition(1.0F);
+            net.minecraft.world.phys.Vec3 lookVec = preferredPlayer.getLookAngle();
             
             double angle = Math.atan2(lookVec.z, lookVec.x) * 180.0 / Math.PI;
             angle = (angle + 360) % 360;
@@ -126,7 +129,7 @@ public class MineBlockAction extends BaseAction {
         
         steve.setFlying(true);
         
-        equipIronPickaxe();
+        equipBestToolForMining();
         
         SteveMod.LOGGER.info("Steve '{}' mining {} - staying at {} [SLOW & VISIBLE]", 
             steve.getSteveName(), targetBlock.getName().getString(), miningStartPos);
@@ -143,7 +146,6 @@ public class MineBlockAction extends BaseAction {
         
         if (ticksRunning > MAX_TICKS) {
             steve.setFlying(false);
-            steve.setItemInHand(InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
             result = ActionResult.failure("Mining timeout - only found " + minedCount + " blocks");
             return;
         }
@@ -164,8 +166,7 @@ public class MineBlockAction extends BaseAction {
                 if (minedCount >= targetQuantity) {
                     // Found enough ore, mission accomplished
                     steve.setFlying(false);
-                    steve.setItemInHand(InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
-                    result = ActionResult.success("Mined " + minedCount + " " + targetBlock.getName().getString());
+                    result = ActionResult.success("Mined " + minedCount + " " + targetBlock.getName().getString()).build();
                     return;
                 } else {
                     mineNearbyBlock();
@@ -184,7 +185,7 @@ public class MineBlockAction extends BaseAction {
             
             steve.swing(InteractionHand.MAIN_HAND, true);
             
-            if (!steve.level().destroyBlock(currentTarget, true)) {
+            if (!steve.breakBlockIntoInventory(currentTarget)) {
                 SteveMod.LOGGER.warn("Minecraft rejected mining at {}", currentTarget);
                 currentTarget = null;
                 return;
@@ -198,8 +199,7 @@ public class MineBlockAction extends BaseAction {
             
             if (minedCount >= targetQuantity) {
                 steve.setFlying(false);
-                steve.setItemInHand(InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
-                result = ActionResult.success("Mined " + minedCount + " " + targetBlock.getName().getString());
+                result = ActionResult.success("Mined " + minedCount + " " + targetBlock.getName().getString()).build();
                 return;
             }
             
@@ -213,7 +213,11 @@ public class MineBlockAction extends BaseAction {
     protected void onCancel() {
         steve.setFlying(false);
         steve.getNavigation().stop();
-        steve.setItemInHand(InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
+    }
+
+    @Override
+    protected void onFinish() {
+        restorePreviousMainHandItem();
     }
 
     @Override
@@ -291,7 +295,7 @@ public class MineBlockAction extends BaseAction {
                 return;
             }
             steve.swing(InteractionHand.MAIN_HAND, true);
-            if (!steve.level().destroyBlock(centerPos, true)) {
+            if (!steve.breakBlockIntoInventory(centerPos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", centerPos);
                 result = ActionResult.failure("Minecraft rejected tunnel mining at " + centerPos);
                 return;
@@ -310,7 +314,7 @@ public class MineBlockAction extends BaseAction {
                 return;
             }
             steve.swing(InteractionHand.MAIN_HAND, true);
-            if (!steve.level().destroyBlock(abovePos, true)) {
+            if (!steve.breakBlockIntoInventory(abovePos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", abovePos);
                 result = ActionResult.failure("Minecraft rejected tunnel mining at " + abovePos);
                 return;
@@ -356,43 +360,47 @@ public class MineBlockAction extends BaseAction {
     }
 
     /**
-     * Equip an iron pickaxe for mining
+     * Equips the best tool from inventory for mining the target block.
      */
-    private void equipIronPickaxe() {
-        // Give Steve an iron pickaxe if he doesn't have one
-        net.minecraft.world.item.ItemStack pickaxe = new net.minecraft.world.item.ItemStack(
-            net.minecraft.world.item.Items.IRON_PICKAXE
-        );
-        steve.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, pickaxe);
-        SteveMod.LOGGER.info("Steve '{}' equipped iron pickaxe for mining", steve.getSteveName());
+    private void equipBestToolForMining() {
+        steve.syncEquipmentToInventory();
+        previousMainHandItem = steve.getMainHandItem().copy();
+        ItemStack previousTool = steve.getSteveInventory().equipBestTool(targetBlock);
+        if (previousTool != null) {
+            temporaryToolEquipped = true;
+            steve.syncEquipmentFromInventory();
+            SteveMod.LOGGER.info("Steve '{}' equipped best tool for mining {}", steve.getSteveName(), targetBlock);
+        } else {
+            // Check if current main hand item is already usable
+            ItemStack currentMainHand = steve.getMainHandItem();
+            if (!currentMainHand.isEmpty()) {
+                SteveMod.LOGGER.info("Steve '{}' using current main hand item for mining", steve.getSteveName());
+            } else {
+                SteveMod.LOGGER.warn("Steve '{}' has no dedicated tool in inventory for {}", steve.getSteveName(), targetBlock);
+            }
+        }
+    }
+
+    private void restorePreviousMainHandItem() {
+        if (!temporaryToolEquipped) {
+            return;
+        }
+        if (!steve.getSteveInventory().restoreMainHand(previousMainHandItem)) {
+            SteveMod.LOGGER.error(
+                "Steve '{}' could not restore its previous main-hand item without risking item loss",
+                steve.getSteveName());
+            return;
+        }
+        steve.syncEquipmentFromInventory();
+        previousMainHandItem = null;
+        temporaryToolEquipped = false;
     }
 
     /**
-     * Find the nearest player to determine mining direction
+     * Finds the authorized player used to determine mining direction.
      */
-    private net.minecraft.world.entity.player.Player findNearestPlayer() {
-        java.util.List<? extends net.minecraft.world.entity.player.Player> players = steve.level().players();
-        
-        if (players.isEmpty()) {
-            return null;
-        }
-        
-        net.minecraft.world.entity.player.Player nearest = null;
-        double nearestDistance = Double.MAX_VALUE;
-        
-        for (net.minecraft.world.entity.player.Player player : players) {
-            if (!player.isAlive() || player.isRemoved() || player.isSpectator()) {
-                continue;
-            }
-            
-            double distance = steve.distanceTo(player);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearest = player;
-            }
-        }
-        
-        return nearest;
+    private net.minecraft.world.entity.player.Player findPreferredPlayer() {
+        return steve.getPreferredPlayer();
     }
 
     private Block parseBlock(String blockName) {
@@ -429,4 +437,3 @@ public class MineBlockAction extends BaseAction {
             && PermissionManager.getInstance().isProtected(serverLevel, pos);
     }
 }
-

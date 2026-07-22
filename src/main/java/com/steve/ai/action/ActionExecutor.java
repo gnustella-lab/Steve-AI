@@ -1,7 +1,8 @@
 package com.steve.ai.action;
 
 import com.steve.ai.SteveMod;
-import com.steve.ai.action.actions.*;
+import com.steve.ai.action.actions.BaseAction;
+import com.steve.ai.action.actions.IdleFollowAction;
 import com.steve.ai.di.ServiceContainer;
 import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.event.EventBus;
@@ -17,6 +18,7 @@ import com.steve.ai.security.PermissionManager;
 
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -27,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
  *   <li>Uses ActionRegistry for dynamic action creation (Factory + Registry patterns)</li>
  *   <li>Uses InterceptorChain for cross-cutting concerns (logging, metrics, events)</li>
  *   <li>Uses AgentStateMachine for explicit state management</li>
- *   <li>Falls back to legacy switch statement if registry lookup fails</li>
+ *   <li>Requires every executable action to own one registry entry and descriptor</li>
  * </ul>
  *
  * @since 1.1.0
@@ -42,12 +44,13 @@ public class ActionExecutor {
     private int ticksSinceLastAction;
     private BaseAction idleFollowAction;  // Follow player when idle
 
-    // NEW: Async planning support (non-blocking LLM calls)
+    // Async planning state. Completion is polled without blocking the server thread.
     private CompletableFuture<ResponseParser.ParsedResponse> planningFuture;
     private boolean isPlanning = false;
     private String pendingCommand;  // Store command while planning
+    private UUID controllingPlayerUuid;
 
-    // NEW: Plugin architecture components
+    // Plugin architecture components
     private final ActionContext actionContext;
     private final InterceptorChain interceptorChain;
     private final AgentStateMachine stateMachine;
@@ -114,12 +117,24 @@ public class ActionExecutor {
      * @param command The natural language command from the user
      */
     public void processNaturalLanguageCommand(String command) {
+        processNaturalLanguageCommand(command, null);
+    }
+
+    /**
+     * Processes a command while retaining its authorized controller for player-relative actions.
+     *
+     * @param command natural-language command
+     * @param controllerUuid authorized player UUID, or null for console and legacy callers
+     */
+    public void processNaturalLanguageCommand(String command, UUID controllerUuid) {
         SteveMod.LOGGER.info("Steve '{}' processing command (async): {}", steve.getSteveName(), command);
 
         if (command == null || command.isBlank()) {
             sendToGUI(steve.getSteveName(), "Please provide a command.");
             return;
         }
+
+        controllingPlayerUuid = controllerUuid;
 
         // A newer command supersedes any plan still in flight.
         if (isPlanning) {
@@ -174,6 +189,11 @@ public class ActionExecutor {
         }
     }
 
+    /** Returns the player whose accepted command owns the current plan, if any. */
+    public UUID getControllingPlayerUuid() {
+        return controllingPlayerUuid;
+    }
+
     /**
      * Legacy synchronous command processing (blocking).
      *
@@ -186,6 +206,7 @@ public class ActionExecutor {
     @Deprecated
     public void processNaturalLanguageCommandSync(String command) {
         SteveMod.LOGGER.info("Steve '{}' processing command (SYNC - blocking!): {}", steve.getSteveName(), command);
+        controllingPlayerUuid = null;
 
         cancelCurrentAction();
 
@@ -353,7 +374,7 @@ public class ActionExecutor {
 
         // Check permissions before executing
         PermissionManager permManager = PermissionManager.getInstance();
-        if (!permManager.canExecute(steve.getSteveName(), actionType)) {
+        if (!permManager.canExecute(steve.getUUID(), steve.getSteveName(), actionType)) {
             SteveMod.LOGGER.warn("Steve '{}' lacks permission for action '{}', skipping task",
                 steve.getSteveName(), actionType);
             sendToGUI(steve.getSteveName(), "I don't have permission to " + actionType + ".");
@@ -380,62 +401,20 @@ public class ActionExecutor {
         SteveMod.LOGGER.info("Action started! Is complete: {}", currentAction.isComplete());
     }
 
-    /**
-     * Creates an action using the plugin registry with legacy fallback.
-     *
-     * <p>First attempts to create the action via ActionRegistry (plugin system).
-     * If the registry doesn't have the action or creation fails, falls back
-     * to the legacy switch statement for backward compatibility.</p>
-     *
-     * @param task Task containing action type and parameters
-     * @return Created action, or null if unknown action type
-     */
+    /** Creates an action exclusively from the registry's factory and descriptor entry. */
     private BaseAction createAction(Task task) {
         String actionType = task.getAction();
-
-        // Try registry-based creation first (plugin architecture)
         ActionRegistry registry = ActionRegistry.getInstance();
-        if (registry.hasAction(actionType)) {
-            BaseAction action = registry.createAction(actionType, steve, task, actionContext);
-            if (action != null) {
-                SteveMod.LOGGER.debug("Created action '{}' via registry (plugin: {})",
-                    actionType, registry.getPluginForAction(actionType));
-                return action;
-            }
+        if (!registry.hasAction(actionType)) {
+            SteveMod.LOGGER.warn("No registered action factory for '{}'", actionType);
+            return null;
         }
-
-        // Fallback to legacy switch statement for backward compatibility
-        SteveMod.LOGGER.debug("Using legacy fallback for action: {}", actionType);
-        return createActionLegacy(task);
-    }
-
-    /**
-     * Legacy action creation using switch statement.
-     *
-     * <p>Kept for backward compatibility during migration to plugin system.
-     * Will be removed in a future version once all actions are registered
-     * via plugins.</p>
-     *
-     * @param task Task containing action type and parameters
-     * @return Created action, or null if unknown
-     * @deprecated Use ActionRegistry instead
-     */
-    @Deprecated
-    private BaseAction createActionLegacy(Task task) {
-        return switch (task.getAction()) {
-            case "pathfind" -> new PathfindAction(steve, task);
-            case "mine" -> new MineBlockAction(steve, task);
-            case "place" -> new PlaceBlockAction(steve, task);
-
-            case "attack" -> new CombatAction(steve, task);
-            case "follow" -> new FollowPlayerAction(steve, task);
-            case "gather" -> new GatherResourceAction(steve, task);
-            case "build" -> new BuildStructureAction(steve, task);
-            default -> {
-                SteveMod.LOGGER.warn("Unknown action type: {}", task.getAction());
-                yield null;
-            }
-        };
+        BaseAction action = registry.createAction(actionType, steve, task, actionContext);
+        if (action != null) {
+            SteveMod.LOGGER.debug("Created action '{}' via registry (plugin: {})",
+                actionType, registry.getPluginForAction(actionType));
+        }
+        return action;
     }
 
     public void stopCurrentAction() {
@@ -541,7 +520,7 @@ public class ActionExecutor {
             return;
         }
 
-        currentGoal = response.getPlan();
+        currentGoal = response.getSummary();
         steve.getMemory().setCurrentGoal(currentGoal != null ? currentGoal : "");
         if (stateMachine.getCurrentState() == AgentState.PLANNING) {
             stateMachine.transitionTo(AgentState.EXECUTING, "plan accepted");

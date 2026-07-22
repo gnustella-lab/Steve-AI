@@ -39,6 +39,12 @@ public enum ActionPermission {
     /** Combat actions. */
     COMBAT(50),
 
+    /** Inventory management: pickup, give, deposit, withdraw, equip, drop. */
+    INVENTORY(60),
+
+    /** Crafting and smelting. */
+    CRAFTING(65),
+
     /** All actions including destructive operations. */
     ALL(100);
 
@@ -78,9 +84,12 @@ public enum ActionPermission {
             case "pathfind", "follow" -> MOVEMENT;
             case "mine", "gather" -> GATHERING;
             case "place", "build" -> BUILDING;
-            case "craft" -> INTERACTION;
             case "attack" -> COMBAT;
-            default -> ALL; // Unknown actions require max permission
+            case "pickup_item", "give_item", "deposit_item", "withdraw_item",
+                 "equip_item", "unequip_item", "drop_item", "consume_item",
+                 "inspect_inventory" -> INVENTORY;
+            case "craft", "smelt" -> CRAFTING;
+            default -> ALL;
         };
     }
 }

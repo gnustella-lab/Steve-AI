@@ -132,8 +132,8 @@ public class PluginManager {
 
         LOGGER.info("Loading plugin: {} v{}", pluginId, plugin.getVersion());
 
-        // Call onLoad
-        plugin.onLoad(registry, container);
+        // Register as one transaction so a failed plugin cannot leave a partial catalog.
+        registry.runRegistrationTransaction(() -> plugin.onLoad(registry, container));
 
         // Track loaded plugin
         loadedPlugins.put(pluginId, plugin);
@@ -173,7 +173,9 @@ public class PluginManager {
         // Topological sort with priority-based tie-breaking
         List<ActionPlugin> sorted = new ArrayList<>();
         PriorityQueue<ActionPlugin> queue = new PriorityQueue<>(
-            Comparator.comparingInt(ActionPlugin::getPriority).reversed());
+            Comparator.comparingInt(ActionPlugin::getPriority).reversed()
+                .thenComparing(plugin -> !"core-actions".equals(plugin.getPluginId()))
+                .thenComparing(ActionPlugin::getPluginId));
 
         // Start with plugins that have no dependencies
         for (ActionPlugin plugin : plugins) {

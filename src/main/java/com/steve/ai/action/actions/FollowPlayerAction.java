@@ -35,7 +35,7 @@ public class FollowPlayerAction extends BaseAction {
         
         if (ticksRunning > MAX_TICKS) {
             steve.getNavigation().stop();
-            result = ActionResult.success("Stopped following");
+            result = ActionResult.success("Stopped following").build();
             return;
         }
         
@@ -68,33 +68,22 @@ public class FollowPlayerAction extends BaseAction {
 
     private void findPlayer() {
         java.util.List<? extends Player> players = steve.level().players();
-        
+
+        if (playerName == null || playerName.contains("PLAYER") || playerName.contains("NAME")
+                || playerName.equalsIgnoreCase("me") || playerName.equalsIgnoreCase("you")
+                || playerName.isEmpty()) {
+            targetPlayer = steve.getPreferredPlayer();
+            if (targetPlayer != null) {
+                playerName = targetPlayer.getName().getString();
+            }
+            return;
+        }
+
         // First try exact name match
         for (Player player : players) {
             if (player.getName().getString().equalsIgnoreCase(playerName)) {
                 targetPlayer = player;
                 return;
-            }
-        }
-        
-        if (playerName != null && (playerName.contains("PLAYER") || playerName.contains("NAME") || 
-            playerName.equalsIgnoreCase("me") || playerName.equalsIgnoreCase("you") || playerName.isEmpty())) {
-            Player nearest = null;
-            double nearestDistance = Double.MAX_VALUE;
-            
-            for (Player player : players) {
-                double distance = steve.distanceTo(player);
-                if (distance < nearestDistance) {
-                    nearest = player;
-                    nearestDistance = distance;
-                }
-            }
-            
-            if (nearest != null) {
-                targetPlayer = nearest;
-                playerName = nearest.getName().getString(); // Update to actual name
-                com.steve.ai.SteveMod.LOGGER.info("Steve '{}' following nearest player: {}", 
-                    steve.getSteveName(), playerName);
             }
         }
     }

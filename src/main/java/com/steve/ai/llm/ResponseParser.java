@@ -4,51 +4,74 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.steve.ai.SteveMod;
 import com.steve.ai.action.Task;
+import com.steve.ai.action.TaskValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class ResponseParser {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ResponseParser.class);
+    private static final int MAX_RESPONSE_LENGTH = 65_536;
+    private static final int MAX_SUMMARY_LENGTH = 160;
+    private static final int MAX_TASKS = 64;
+    private static final int MAX_PARAMETERS = 32;
+    private static final int MAX_PARAMETER_STRING_LENGTH = 512;
+    private static final Set<String> TOP_LEVEL_FIELDS = Set.of("summary", "tasks", "plan", "reasoning");
+    private static final Set<String> TASK_FIELDS = Set.of("action", "parameters");
     
     public static ParsedResponse parseAIResponse(String response) {
-        if (response == null || response.isEmpty()) {
+        if (response == null || response.isBlank() || response.length() > MAX_RESPONSE_LENGTH) {
             return null;
         }
 
         try {
             String jsonString = extractJSON(response);
             
-            JsonObject json = JsonParser.parseString(jsonString).getAsJsonObject();
-            
-            String reasoning = json.has("reasoning") ? json.get("reasoning").getAsString() : "";
-            String plan = json.has("plan") ? json.get("plan").getAsString() : "";
-            List<Task> tasks = new ArrayList<>();
-            
-            if (json.has("tasks") && json.get("tasks").isJsonArray()) {
-                JsonArray tasksArray = json.getAsJsonArray("tasks");
-                
-                for (JsonElement taskElement : tasksArray) {
-                    if (taskElement.isJsonObject()) {
-                        JsonObject taskObj = taskElement.getAsJsonObject();
-                        Task task = parseTask(taskObj);
-                        if (task != null) {
-                            tasks.add(task);
-                        }
-                    }
-                }
+            JsonElement root = JsonParser.parseString(jsonString);
+            if (!root.isJsonObject()) {
+                return null;
             }
-            
-            if (!reasoning.isEmpty()) {            }
-            
-            return new ParsedResponse(reasoning, plan, tasks);
+            JsonObject json = root.getAsJsonObject();
+            if (json.keySet().stream().anyMatch(field -> !TOP_LEVEL_FIELDS.contains(field))) {
+                return null;
+            }
+
+            String summary = json.has("summary")
+                ? readBoundedString(json.get("summary"), MAX_SUMMARY_LENGTH)
+                : readOptionalBoundedString(json, "plan", MAX_SUMMARY_LENGTH);
+            String legacyReasoning = readOptionalBoundedString(json, "reasoning", MAX_SUMMARY_LENGTH);
+            List<Task> tasks = new ArrayList<>();
+
+            if (!json.has("tasks") || !json.get("tasks").isJsonArray()) {
+                return null;
+            }
+            JsonArray tasksArray = json.getAsJsonArray("tasks");
+            if (tasksArray.size() > MAX_TASKS) {
+                return null;
+            }
+            for (JsonElement taskElement : tasksArray) {
+                if (!taskElement.isJsonObject()) {
+                    return null;
+                }
+                Task task = parseTask(taskElement.getAsJsonObject());
+                if (task == null || !TaskValidator.isValid(task)) {
+                    return null;
+                }
+                tasks.add(task);
+            }
+
+            return new ParsedResponse(summary, legacyReasoning, tasks);
             
         } catch (Exception e) {
-            SteveMod.LOGGER.error("Failed to parse AI response: {}", response, e);
+            LOGGER.warn("Failed to parse AI response ({} characters): {}",
+                response.length(), e.getClass().getSimpleName());
             return null;
         }
     }
@@ -107,67 +130,111 @@ public class ResponseParser {
     }
 
     private static Task parseTask(JsonObject taskObj) {
+        if (taskObj.keySet().stream().anyMatch(field -> !TASK_FIELDS.contains(field))) {
+            return null;
+        }
         if (!taskObj.has("action") || !taskObj.get("action").isJsonPrimitive()
                 || !taskObj.getAsJsonPrimitive("action").isString()) {
             return null;
         }
         
         String action = taskObj.get("action").getAsString().trim().toLowerCase(Locale.ROOT);
-        if (action.isEmpty()) {
+        if (action.isEmpty() || action.length() > 128) {
             return null;
         }
         Map<String, Object> parameters = new HashMap<>();
-        
-        if (taskObj.has("parameters") && taskObj.get("parameters").isJsonObject()) {
-            JsonObject paramsObj = taskObj.getAsJsonObject("parameters");
-            
-            for (String key : paramsObj.keySet()) {
-                JsonElement value = paramsObj.get(key);
-                
-                if (value.isJsonPrimitive()) {
-                    if (value.getAsJsonPrimitive().isNumber()) {
-                        parameters.put(key, value.getAsNumber());
-                    } else if (value.getAsJsonPrimitive().isBoolean()) {
-                        parameters.put(key, value.getAsBoolean());
-                    } else {
-                        parameters.put(key, value.getAsString());
-                    }
-                } else if (value.isJsonArray()) {
-                    List<Object> list = new ArrayList<>();
-                    for (JsonElement element : value.getAsJsonArray()) {
-                        if (element.isJsonPrimitive()) {
-                            if (element.getAsJsonPrimitive().isNumber()) {
-                                list.add(element.getAsNumber());
-                            } else {
-                                list.add(element.getAsString());
-                            }
-                        }
-                    }
-                    parameters.put(key, list);
-                }
-            }
+
+        if (!taskObj.has("parameters") || !taskObj.get("parameters").isJsonObject()) {
+            return null;
         }
-        
+        JsonObject paramsObj = taskObj.getAsJsonObject("parameters");
+        if (paramsObj.size() > MAX_PARAMETERS) {
+            return null;
+        }
+        for (String key : paramsObj.keySet()) {
+            if (key.isBlank() || key.length() > 64) {
+                return null;
+            }
+            Object value = parseParameterValue(paramsObj.get(key));
+            if (value == null) {
+                return null;
+            }
+            parameters.put(key, value);
+        }
         return new Task(action, parameters);
     }
 
+    private static Object parseParameterValue(JsonElement value) {
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+        if (value.isJsonPrimitive()) {
+            if (value.getAsJsonPrimitive().isNumber()) {
+                return value.getAsNumber();
+            }
+            if (value.getAsJsonPrimitive().isBoolean()) {
+                return value.getAsBoolean();
+            }
+            String text = value.getAsString();
+            return text.length() <= MAX_PARAMETER_STRING_LENGTH ? text : null;
+        }
+        if (!value.isJsonArray() || value.getAsJsonArray().size() > MAX_PARAMETERS) {
+            return null;
+        }
+        List<Object> list = new ArrayList<>();
+        for (JsonElement element : value.getAsJsonArray()) {
+            if (!element.isJsonPrimitive()) {
+                return null;
+            }
+            Object item = parseParameterValue(element);
+            if (item == null) {
+                return null;
+            }
+            list.add(item);
+        }
+        return list;
+    }
+
+    private static String readOptionalBoundedString(JsonObject json, String field, int maximumLength) {
+        return json.has(field) ? readBoundedString(json.get(field), maximumLength) : "";
+    }
+
+    private static String readBoundedString(JsonElement value, int maximumLength) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException("Expected a string field");
+        }
+        String text = value.getAsString().trim();
+        if (text.length() > maximumLength) {
+            throw new IllegalArgumentException("String field exceeds " + maximumLength + " characters");
+        }
+        return text;
+    }
+
     public static class ParsedResponse {
-        private final String reasoning;
-        private final String plan;
+        private final String summary;
+        private final String legacyReasoning;
         private final List<Task> tasks;
 
-        public ParsedResponse(String reasoning, String plan, List<Task> tasks) {
-            this.reasoning = reasoning;
-            this.plan = plan;
-            this.tasks = tasks;
+        private ParsedResponse(String summary, String legacyReasoning, List<Task> tasks) {
+            this.summary = summary;
+            this.legacyReasoning = legacyReasoning;
+            this.tasks = List.copyOf(tasks);
         }
 
+        public String getSummary() {
+            return summary;
+        }
+
+        /** @deprecated Private reasoning is no longer requested. Retained for one response-format version. */
+        @Deprecated(forRemoval = false)
         public String getReasoning() {
-            return reasoning;
+            return legacyReasoning;
         }
 
+        /** @deprecated Use {@link #getSummary()}. */
+        @Deprecated(forRemoval = false)
         public String getPlan() {
-            return plan;
+            return summary;
         }
 
         public List<Task> getTasks() {

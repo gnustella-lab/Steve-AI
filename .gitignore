@@ -13,6 +13,9 @@ out/
 .vscode/
 *.code-workspace
 
+# AI agent planning scratch (internal, regenerable)
+.hermes/
+
 # Minecraft
 run/
 run-gametest/

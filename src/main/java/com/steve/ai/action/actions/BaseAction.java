@@ -10,6 +10,7 @@ public abstract class BaseAction {
     protected ActionResult result;
     protected boolean started = false;
     protected boolean cancelled = false;
+    private boolean completionHandled = false;
 
     public BaseAction(SteveEntity steve, Task task) {
         this.steve = steve;
@@ -20,17 +21,24 @@ public abstract class BaseAction {
         if (started) return;
         started = true;
         onStart();
+        finishIfComplete();
     }
 
     public void tick() {
         if (!started || isComplete()) return;
         onTick();
+        finishIfComplete();
     }
 
     public void cancel() {
+        if (cancelled) return;
         cancelled = true;
         result = ActionResult.failure("Action cancelled");
-        onCancel();
+        try {
+            onCancel();
+        } finally {
+            finishIfComplete();
+        }
     }
 
     public boolean isComplete() {
@@ -44,6 +52,17 @@ public abstract class BaseAction {
     protected abstract void onStart();
     protected abstract void onTick();
     protected abstract void onCancel();
+
+    /** Called exactly once after success, failure, or cancellation. */
+    protected void onFinish() {
+    }
+
+    private void finishIfComplete() {
+        if (!completionHandled && isComplete()) {
+            completionHandled = true;
+            onFinish();
+        }
+    }
     
     public abstract String getDescription();
 }

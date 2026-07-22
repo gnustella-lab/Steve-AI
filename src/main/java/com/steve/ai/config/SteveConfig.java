@@ -44,6 +44,9 @@ public class SteveConfig {
     public static final ForgeConfigSpec.IntValue ACTION_TICK_DELAY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_CHAT_RESPONSES;
     public static final ForgeConfigSpec.IntValue MAX_ACTIVE_STEVES;
+    public static final ForgeConfigSpec.IntValue INVENTORY_SLOTS;
+    public static final ForgeConfigSpec.BooleanValue SURVIVAL_CONSTRUCTION;
+    public static final ForgeConfigSpec.BooleanValue CREATIVE_CONSTRUCTION;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -118,6 +121,18 @@ public class SteveConfig {
         MAX_ACTIVE_STEVES = builder
             .comment("Maximum number of Steves that can be active simultaneously")
             .defineInRange("maxActiveSteves", 10, 1, 50);
+
+        INVENTORY_SLOTS = builder
+            .comment("Inventory slots for newly created Steves. Existing larger inventories are preserved.")
+            .defineInRange("inventorySlots", 27, 9, 54);
+
+        SURVIVAL_CONSTRUCTION = builder
+            .comment("When true, building consumes items from Steve's inventory.")
+            .define("survivalConstruction", true);
+
+        CREATIVE_CONSTRUCTION = builder
+            .comment("When true, blocks are placed without consuming items from inventory.")
+            .define("creativeConstruction", false);
 
         builder.pop();
 
