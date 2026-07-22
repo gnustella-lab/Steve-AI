@@ -123,6 +123,7 @@ public final class SteveGameTests {
         steve.setSteveName("Phase1ToolRestore");
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
         steve.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND_SWORD));
+        steve.getSteveInventory().insert(new ItemStack(Items.IRON_PICKAXE));
         helper.getLevel().addFreshEntity(steve);
         MineBlockAction action = new MineBlockAction(
             steve,
@@ -136,6 +137,10 @@ public final class SteveGameTests {
 
         helper.assertTrue(steve.getMainHandItem().is(Items.DIAMOND_SWORD),
             "Mining cancellation did not restore the previous main-hand item");
+        helper.assertTrue(steve.getSteveInventory().count(Items.IRON_PICKAXE) == 1,
+            "Temporary tool was lost or duplicated during cancellation");
+        helper.assertTrue(steve.getSteveInventory().count(Items.DIAMOND_SWORD) == 0,
+            "Previous main-hand item was duplicated into inventory");
         helper.succeed();
     }
 }

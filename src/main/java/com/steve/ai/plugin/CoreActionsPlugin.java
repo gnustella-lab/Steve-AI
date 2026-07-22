@@ -231,34 +231,6 @@ public class CoreActionsPlugin implements ActionPlugin {
                 ActionCapability.INVENTORY_READ),
             (steve, task, ctx) -> new InspectInventoryAction(steve, task), priority);
 
-        // ── Crafting actions ─────────────────────────────────────────
-
-        registry.register(descriptor(
-                "craft",
-                "Craft an item using available ingredients and a crafting table",
-                ActionPermission.CRAFTING,
-                JsonSchema.object()
-                    .requiredString("item", 1, 128)
-                    .requiredInteger("quantity", 1, 64)
-                    .build(),
-                "{\"action\":\"craft\",\"parameters\":{\"item\":\"iron_pickaxe\",\"quantity\":1}}",
-                ActionCapability.MOVEMENT, ActionCapability.INVENTORY_READ,
-                ActionCapability.INVENTORY_WRITE, ActionCapability.CRAFTING),
-            (steve, task, ctx) -> new CraftItemAction(steve, task), priority);
-
-        registry.register(descriptor(
-                "smelt",
-                "Smelt items in a furnace",
-                ActionPermission.CRAFTING,
-                JsonSchema.object()
-                    .requiredString("item", 1, 128)
-                    .requiredInteger("quantity", 1, 64)
-                    .build(),
-                "{\"action\":\"smelt\",\"parameters\":{\"item\":\"iron_ingot\",\"quantity\":8}}",
-                ActionCapability.MOVEMENT, ActionCapability.INVENTORY_READ,
-                ActionCapability.INVENTORY_WRITE, ActionCapability.WORLD_WRITE),
-            (steve, task, ctx) -> new SmeltItemAction(steve, task), priority);
-
         LOGGER.info("CoreActionsPlugin loaded {} actions", registry.getActionCount());
     }
 

@@ -3,6 +3,7 @@ package com.steve.ai.inventory;
 import net.minecraft.SharedConstants;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.BeforeAll;
@@ -122,5 +123,31 @@ class SteveInventoryTest {
         assertTrue(summary.contains("oak_log: 32"));
         assertTrue(summary.contains("bread: 5"));
         assertTrue(summary.contains("iron_pickaxe: 1, durability 71%"));
+    }
+
+    @Test
+    void roundTripNbtPreservesEquipmentAndDurability() {
+        SteveInventory original = new SteveInventory(3);
+        ItemStack pickaxe = new ItemStack(Items.IRON_PICKAXE);
+        pickaxe.setDamageValue(91);
+        original.setMainHandItem(pickaxe);
+        original.setArmor(EquipmentSlot.CHEST, new ItemStack(Items.IRON_CHESTPLATE));
+
+        SteveInventory restored = new SteveInventory(3);
+        restored.load(original.save());
+
+        assertTrue(restored.getMainHandItem().is(Items.IRON_PICKAXE));
+        assertEquals(91, restored.getMainHandItem().getDamageValue());
+        assertTrue(restored.getArmor(EquipmentSlot.CHEST).is(Items.IRON_CHESTPLATE));
+    }
+
+    @Test
+    void loadingSnapshotClearsEquipmentMissingFromSnapshot() {
+        SteveInventory restored = new SteveInventory(3);
+        restored.setMainHandItem(new ItemStack(Items.DIAMOND_SWORD));
+
+        restored.load(new SteveInventory(3).save());
+
+        assertTrue(restored.getMainHandItem().isEmpty());
     }
 }

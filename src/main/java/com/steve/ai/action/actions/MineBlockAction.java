@@ -363,6 +363,7 @@ public class MineBlockAction extends BaseAction {
      * Equips the best tool from inventory for mining the target block.
      */
     private void equipBestToolForMining() {
+        steve.syncEquipmentToInventory();
         previousMainHandItem = steve.getMainHandItem().copy();
         ItemStack previousTool = steve.getSteveInventory().equipBestTool(targetBlock);
         if (previousTool != null) {
@@ -384,7 +385,12 @@ public class MineBlockAction extends BaseAction {
         if (!temporaryToolEquipped) {
             return;
         }
-        steve.getSteveInventory().setMainHandItem(previousMainHandItem);
+        if (!steve.getSteveInventory().restoreMainHand(previousMainHandItem)) {
+            SteveMod.LOGGER.error(
+                "Steve '{}' could not restore its previous main-hand item without risking item loss",
+                steve.getSteveName());
+            return;
+        }
         steve.syncEquipmentFromInventory();
         previousMainHandItem = null;
         temporaryToolEquipped = false;
@@ -431,4 +437,3 @@ public class MineBlockAction extends BaseAction {
             && PermissionManager.getInstance().isProtected(serverLevel, pos);
     }
 }
-

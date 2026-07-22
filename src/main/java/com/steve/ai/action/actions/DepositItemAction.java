@@ -120,11 +120,16 @@ public class DepositItemAction extends BaseAction {
             if (!added && !stack.isEmpty()) {
                 for (int slot = 0; slot < container.getContainerSize(); slot++) {
                     if (container.getItem(slot).isEmpty()) {
-                        container.setItem(slot, stack);
+                        container.setItem(slot, stack.copy());
                         depositedThisTick += stack.getCount();
+                        stack.setCount(0);
                         break;
                     }
                 }
+            }
+
+            if (!stack.isEmpty()) {
+                steve.getSteveInventory().insert(stack);
             }
         }
 
@@ -153,18 +158,25 @@ public class DepositItemAction extends BaseAction {
     private BlockEntity findNearbyContainer() {
         if (!(steve.level() instanceof ServerLevel serverLevel)) return null;
         BlockPos stevePos = steve.blockPosition();
+        BlockEntity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
         for (int x = -4; x <= 4; x++) {
             for (int y = -2; y <= 2; y++) {
                 for (int z = -4; z <= 4; z++) {
                     BlockPos pos = stevePos.offset(x, y, z);
                     BlockEntity be = serverLevel.getBlockEntity(pos);
                     if (be instanceof Container) {
-                        return be;
+                        double distance = steve.distanceToSqr(
+                            pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearest = be;
+                        }
                     }
                 }
             }
         }
-        return null;
+        return nearest;
     }
 
     private Item parseItem(String name) {

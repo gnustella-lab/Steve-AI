@@ -96,3 +96,25 @@ Resultados:
 - Namespace e versionamento formal da API externa de plugins.
 
 Esses itens permanecem distribuídos entre as Fases 2 a 6 do plano em `.hermes/plans/2026-07-21_141638-steve-ai-survival-companion.md`.
+
+## Encerramento da Fase 1
+
+Verificação final reproduzida em 2026-07-22:
+
+- seleção e restauração temporária de ferramentas usam troca conservativa de slots;
+- cancelamento repetido não perde nem duplica a ferramenta ou o item anteriormente equipado;
+- snapshots NBT substituem completamente o equipamento anterior da instância;
+- depósito em contêiner só remove o saldo efetivamente inserido e seleciona o contêiner mais próximo;
+- ações de crafting e fundição permanecem fora do catálogo do planejador até a conclusão da Fase 2;
+- CI de pull requests usa Java 17 e Gradle 8.4 para executar testes e build.
+
+Resultados:
+
+    ./gradlew test --rerun-tasks --console=plain
+    BUILD SUCCESSFUL — 57 testes, 0 falhas, 0 erros, 0 skips
+
+    ./gradlew build --rerun-tasks --console=plain
+    BUILD SUCCESSFUL
+
+    ./gradlew runGameTestServer --console=plain
+    All 6 required tests passed

@@ -308,11 +308,59 @@ public final class SteveInventory {
      * Returns null if no suitable tool found.
      */
     public ItemStack equipBestTool(net.minecraft.world.level.block.Block block) {
-        ItemStack tool = findBestToolForBlock(block);
-        if (tool == null) {
-            return null;
+        ItemStack current = getMainHandItem();
+        net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
+        float bestSpeed = isEffectiveTool(current, block) ? current.getDestroySpeed(state) : 1.0F;
+        int bestSlot = -1;
+        int bestTier = current.getItem() instanceof TieredItem tiered
+            ? tiered.getTier().getLevel() : -1;
+        for (int slot = 0; slot < contents.size(); slot++) {
+            ItemStack candidate = contents.get(slot);
+            if (!isEffectiveTool(candidate, block) || !(candidate.getItem() instanceof TieredItem tiered)) {
+                continue;
+            }
+            int tier = tiered.getTier().getLevel();
+            float speed = candidate.getDestroySpeed(state);
+            if (speed > bestSpeed || (speed == bestSpeed && tier > bestTier)) {
+                bestSpeed = speed;
+                bestTier = tier;
+                bestSlot = slot;
+            }
         }
-        return swapEquipment(EquipmentSlot.MAINHAND, tool);
+        if (bestSlot < 0) {
+            return isEffectiveTool(current, block) ? current.copy() : null;
+        }
+
+        ItemStack previous = current.copy();
+        ItemStack selected = contents.get(bestSlot).copy();
+        contents.set(bestSlot, previous.isEmpty() ? ItemStack.EMPTY : previous.copy());
+        setMainHandItem(selected);
+        return previous;
+    }
+
+    /** Reverses a temporary main-hand swap without creating or losing a stack. */
+    public boolean restoreMainHand(ItemStack previousMainHand) {
+        ItemStack previous = previousMainHand == null ? ItemStack.EMPTY : previousMainHand;
+        ItemStack current = getMainHandItem().copy();
+        if (ItemStack.matches(current, previous)) {
+            return true;
+        }
+
+        int restoreSlot = -1;
+        for (int slot = 0; slot < contents.size(); slot++) {
+            ItemStack candidate = contents.get(slot);
+            if (previous.isEmpty() ? candidate.isEmpty() : ItemStack.matches(candidate, previous)) {
+                restoreSlot = slot;
+                break;
+            }
+        }
+        if (restoreSlot < 0) {
+            return false;
+        }
+
+        contents.set(restoreSlot, current.isEmpty() ? ItemStack.EMPTY : current);
+        setMainHandItem(previous);
+        return true;
     }
 
     /**
@@ -445,6 +493,10 @@ public final class SteveInventory {
         NonNullList<ItemStack> restored = NonNullList.withSize(targetSize, ItemStack.EMPTY);
         ContainerHelper.loadAllItems(tag, restored);
         contents = restored;
+
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            equipment.put(slot, ItemStack.EMPTY);
+        }
 
         if (tag.contains("Equipment", CompoundTag.TAG_COMPOUND)) {
             CompoundTag equipmentTag = tag.getCompound("Equipment");
