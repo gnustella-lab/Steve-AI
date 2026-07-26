@@ -49,6 +49,11 @@ public abstract class BaseAction {
         return result;
     }
 
+    /** Returns the task that created this action. */
+    public Task getTask() {
+        return task;
+    }
+
     protected abstract void onStart();
     protected abstract void onTick();
     protected abstract void onCancel();

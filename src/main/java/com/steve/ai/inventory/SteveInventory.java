@@ -308,11 +308,63 @@ public final class SteveInventory {
      * Returns null if no suitable tool found.
      */
     public ItemStack equipBestTool(net.minecraft.world.level.block.Block block) {
-        ItemStack tool = findBestToolForBlock(block);
-        if (tool == null) {
+        ItemStack current = getMainHandItem();
+        if (!current.isEmpty() && isEffectiveTool(current, block)) {
+            return current.copy();
+        }
+
+        int bestSlot = -1;
+        int bestTier = -1;
+        for (int slot = 0; slot < contents.size(); slot++) {
+            ItemStack candidate = contents.get(slot);
+            if (!isEffectiveTool(candidate, block) || !(candidate.getItem() instanceof TieredItem tiered)) {
+                continue;
+            }
+            int tier = tiered.getTier().getLevel();
+            if (tier > bestTier) {
+                bestTier = tier;
+                bestSlot = slot;
+            }
+        }
+        if (bestSlot < 0) {
             return null;
         }
-        return swapEquipment(EquipmentSlot.MAINHAND, tool);
+
+        ItemStack previous = current.copy();
+        ItemStack selected = contents.get(bestSlot).copy();
+        contents.set(bestSlot, previous.isEmpty() ? ItemStack.EMPTY : previous.copy());
+        setMainHandItem(selected);
+        return previous;
+    }
+
+    /**
+     * Reverses a temporary main-hand swap without creating or losing a stack.
+     *
+     * @param previousMainHand snapshot returned by {@link #equipBestTool}
+     * @return true when the inverse swap was committed
+     */
+    public boolean restoreMainHand(ItemStack previousMainHand) {
+        ItemStack previous = previousMainHand == null ? ItemStack.EMPTY : previousMainHand;
+        ItemStack current = getMainHandItem().copy();
+        if (ItemStack.matches(current, previous)) {
+            return true;
+        }
+
+        int restoreSlot = -1;
+        for (int slot = 0; slot < contents.size(); slot++) {
+            ItemStack candidate = contents.get(slot);
+            if (previous.isEmpty() ? candidate.isEmpty() : ItemStack.matches(candidate, previous)) {
+                restoreSlot = slot;
+                break;
+            }
+        }
+        if (restoreSlot < 0) {
+            return false;
+        }
+
+        contents.set(restoreSlot, current.isEmpty() ? ItemStack.EMPTY : current);
+        setMainHandItem(previous);
+        return true;
     }
 
     /**
@@ -446,6 +498,10 @@ public final class SteveInventory {
         ContainerHelper.loadAllItems(tag, restored);
         contents = restored;
 
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            equipment.put(slot, ItemStack.EMPTY);
+        }
+
         if (tag.contains("Equipment", CompoundTag.TAG_COMPOUND)) {
             CompoundTag equipmentTag = tag.getCompound("Equipment");
             for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -466,6 +522,75 @@ public final class SteveInventory {
         if (stack.isEmpty()) return false;
         net.minecraft.world.level.block.state.BlockState state = block.defaultBlockState();
         return stack.getDestroySpeed(state) > 1.0f;
+    }
+
+    public ItemStack equipBestWeapon() {
+        ItemStack best = null;
+        int bestScore = -1;
+        int bestSlot = -1;
+        for (int i = 0; i < contents.size(); i++) {
+            ItemStack stack = contents.get(i);
+            if (stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            int score = -1;
+            if (item instanceof net.minecraft.world.item.SwordItem sword) {
+                score = sword.getTier().getLevel() * 10 + 5;
+            } else if (item instanceof net.minecraft.world.item.AxeItem axe) {
+                score = axe.getTier().getLevel() * 10;
+            } else if (item instanceof TieredItem tiered) {
+                score = tiered.getTier().getLevel() * 10 - 2;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = stack;
+                bestSlot = i;
+            }
+        }
+        if (best != null) {
+            ItemStack previous = getMainHandItem();
+            setMainHandItem(best.copy());
+            contents.set(bestSlot, previous.isEmpty() ? ItemStack.EMPTY : previous.copy());
+            return previous;
+        }
+        return null;
+    }
+
+    public void equipBestArmor() {
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack currentArmor = getArmor(slot);
+            int currentDefense = -1;
+            if (!currentArmor.isEmpty() && currentArmor.getItem() instanceof net.minecraft.world.item.ArmorItem armorItem) {
+                currentDefense = armorItem.getDefense();
+            }
+
+            ItemStack best = null;
+            int bestDefense = currentDefense;
+            int bestIndex = -1;
+
+            for (int i = 0; i < contents.size(); i++) {
+                ItemStack stack = contents.get(i);
+                if (!stack.isEmpty() && stack.getItem() instanceof net.minecraft.world.item.ArmorItem armorItem) {
+                    if (armorItem.getEquipmentSlot() == slot) {
+                        int def = armorItem.getDefense();
+                        if (def > bestDefense) {
+                            bestDefense = def;
+                            best = stack;
+                            bestIndex = i;
+                        }
+                    }
+                }
+            }
+
+            if (best != null) {
+                ItemStack previous = currentArmor;
+                setArmor(slot, best.copy());
+                if (!previous.isEmpty()) {
+                    contents.set(bestIndex, previous.copy());
+                } else {
+                    contents.set(bestIndex, ItemStack.EMPTY);
+                }
+            }
+        }
     }
 
     private record SummaryEntry(int count, int durabilityPercent) {

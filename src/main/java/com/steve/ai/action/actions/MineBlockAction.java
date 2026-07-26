@@ -184,7 +184,7 @@ public class MineBlockAction extends BaseAction {
             steve.teleportTo(currentTarget.getX() + 0.5, currentTarget.getY(), currentTarget.getZ() + 0.5);
             
             steve.swing(InteractionHand.MAIN_HAND, true);
-            
+
             if (!steve.breakBlockIntoInventory(currentTarget)) {
                 SteveMod.LOGGER.warn("Minecraft rejected mining at {}", currentTarget);
                 currentTarget = null;
@@ -192,9 +192,19 @@ public class MineBlockAction extends BaseAction {
             }
             minedCount++;
             ticksSinceLastMine = 0; // Reset delay timer
-            
-            SteveMod.LOGGER.info("Steve '{}' moved to ore and mined {} at {} - Total: {}/{}", 
-                steve.getSteveName(), targetBlock.getName().getString(), currentTarget, 
+
+            if (steve.getSteveInventory().isEquippedToolBroken()
+                    || steve.getSteveInventory().needsReplacement(steve.getMainHandItem())) {
+                equipBestToolForMining();
+                if (steve.getSteveInventory().isEquippedToolBroken()
+                        && steve.getMainHandItem().isEmpty()) {
+                    SteveMod.LOGGER.warn("Steve '{}' ran out of usable tools for {}",
+                        steve.getSteveName(), targetBlock.getName().getString());
+                }
+            }
+
+            SteveMod.LOGGER.info("Steve '{}' moved to ore and mined {} at {} - Total: {}/{}",
+                steve.getSteveName(), targetBlock.getName().getString(), currentTarget,
                 minedCount, targetQuantity);
             
             if (minedCount >= targetQuantity) {
@@ -384,7 +394,12 @@ public class MineBlockAction extends BaseAction {
         if (!temporaryToolEquipped) {
             return;
         }
-        steve.getSteveInventory().setMainHandItem(previousMainHandItem);
+        if (!steve.getSteveInventory().restoreMainHand(previousMainHandItem)) {
+            SteveMod.LOGGER.error(
+                "Steve '{}' could not restore its previous main-hand item without risking item loss",
+                steve.getSteveName());
+            return;
+        }
         steve.syncEquipmentFromInventory();
         previousMainHandItem = null;
         temporaryToolEquipped = false;
@@ -431,4 +446,3 @@ public class MineBlockAction extends BaseAction {
             && PermissionManager.getInstance().isProtected(serverLevel, pos);
     }
 }
-

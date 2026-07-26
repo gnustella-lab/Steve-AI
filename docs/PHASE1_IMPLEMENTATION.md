@@ -86,6 +86,40 @@ Resultados:
 - Nenhuma linha Java alterada acima de 120 caracteres.
 - Nenhuma possível credencial detectada nas linhas adicionadas.
 
+## Auditoria de encerramento
+
+Data: 2026-07-22
+
+A auditoria de encerramento encontrou e corrigiu riscos de duplicação que não estavam cobertos pela
+verificação inicial:
+
+- a seleção automática de ferramenta agora troca o slot com a mão principal, em vez de copiar o stack;
+- o cancelamento da mineração desfaz a troca de maneira conservativa e falha fechado se o slot de origem
+  tiver sido alterado externamente;
+- o carregamento de NBT limpa equipamento ausente no snapshot, evitando equipamento residual ao reutilizar
+  uma instância;
+- a transferência para contêiner zera o saldo efetivamente inserido e seleciona deterministicamente o
+  contêiner mais próximo;
+- o helper de GameTests longos usa GameTestSequence.thenWaitUntil, pois chamadas recursivas de
+  runAfterDelay(1) não avançavam a ação a cada tick.
+
+Resultados reproduzidos no estado atual:
+
+    ./gradlew test --rerun-tasks --console=plain
+    BUILD SUCCESSFUL — 104 testes, 0 falhas, 0 erros, 0 skips
+
+    ./gradlew build --rerun-tasks --console=plain
+    BUILD SUCCESSFUL
+
+    ./gradlew runGameTestServer --console=plain
+    6/6 GameTests da Fase 1 passaram
+    10/12 GameTests totais passaram
+
+Os dois GameTests restantes (craftingConsumesIngredientsAndProducesResult e
+smeltingConsumesInputAndProducesIngot) pertencem explicitamente à Fase 2 e não alteram o fechamento do
+escopo de fundação. Eles continuam obrigatórios e falhando visivelmente; não foram desativados nem marcados
+como opcionais.
+
 ## Não objetivos desta fase
 
 - Crafting, fundição e árvore de receitas.

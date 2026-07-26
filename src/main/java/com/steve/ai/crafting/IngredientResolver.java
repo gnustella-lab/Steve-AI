@@ -85,19 +85,59 @@ public class IngredientResolver {
      * Returns the list of consumed items for potential refund on failure.
      */
     public static List<ItemStack> consume(SteveInventory inventory, List<IngredientQuantity> ingredients) {
+        return consume(inventory, ingredients, 1);
+    }
+
+    /**
+     * Consumes ingredients {@code repeat} times from the inventory.
+     * Returns the list of consumed items for potential refund on failure.
+     * If there are not enough items to satisfy every repetition, the partial
+     * consumption is rolled back and an empty list is returned.
+     */
+    public static List<ItemStack> consume(SteveInventory inventory,
+            List<IngredientQuantity> ingredients, int repeat) {
+        if (repeat < 0) {
+            throw new IllegalArgumentException("repeat must be non-negative");
+        }
+        if (repeat == 0) {
+            return List.of();
+        }
+        List<ItemStack> consumed = consumeOnce(inventory, ingredients, repeat);
+        if (consumed == null) {
+            return List.of();
+        }
+        return consumed;
+    }
+
+    private static List<ItemStack> consumeOnce(SteveInventory inventory,
+            List<IngredientQuantity> ingredients, int repeat) {
         List<ItemStack> consumed = new ArrayList<>();
         for (IngredientQuantity iq : ingredients) {
-            int remaining = iq.quantity();
+            int needed = iq.quantity() * repeat;
+            int takenForThis = 0;
             for (ItemStack stack : inventory.getContents()) {
-                if (remaining <= 0) break;
-                if (iq.ingredient().test(stack)) {
-                    int take = Math.min(stack.getCount(), remaining);
+                if (needed <= 0) break;
+                if (iq.ingredient() != null && iq.ingredient().test(stack)) {
+                    int take = Math.min(stack.getCount(), needed);
                     ItemStack taken = stack.copy();
                     taken.setCount(take);
-                    inventory.remove(stack.getItem(), take);
+                    int removed = inventory.remove(stack.getItem(), take);
+                    if (removed != take) {
+                        restore(inventory, consumed);
+                        return null;
+                    }
                     consumed.add(taken);
-                    remaining -= take;
+                    needed -= take;
+                    takenForThis += take;
                 }
+            }
+            if (needed > 0) {
+                restore(inventory, consumed);
+                return null;
+            }
+            if (takenForThis == 0 && iq.quantity() * repeat > 0) {
+                restore(inventory, consumed);
+                return null;
             }
         }
         return consumed;

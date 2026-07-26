@@ -12,7 +12,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.ChestBlockEntity;
+
 
 /**
  * Withdraws items from a nearby container into the Steve inventory.
@@ -116,8 +116,8 @@ public class WithdrawItemAction extends BaseAction {
             }
         }
 
-        if (blockEntity instanceof ChestBlockEntity chest) {
-            chest.setChanged();
+        if (blockEntity != null) {
+            blockEntity.setChanged();
         }
 
         withdrawn += withdrawnThisTick;

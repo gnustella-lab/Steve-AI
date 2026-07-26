@@ -1,6 +1,8 @@
 package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Recipe;
@@ -21,9 +23,14 @@ public class CraftingPlanner {
 
     /**
      * A single step in the crafting plan.
+     *
+     * <p>{@code recipe} is the authoritative Minecraft recipe used to assemble the result
+     * (preserves NBT, count, and shaped/shapeless semantics). It may be {@code null} only when
+     * the plan was produced from a non-runtime source (e.g., unit tests without Minecraft bootstrapped).</p>
      */
     public record CraftStep(
         String recipeId,
+        Recipe<?> recipe,
         RecipeType<?> recipeType,
         String resultItem,
         int resultCount,
@@ -86,6 +93,7 @@ public class CraftingPlanner {
 
         try {
             List<String> order = graph.topologicalSort();
+            java.util.Set<String> producedItems = new java.util.HashSet<>();
             for (String recipeId : order) {
                 RecipeDependencyGraph.Node node = graph.getNode(recipeId);
                 if (node == null) continue;
@@ -102,8 +110,28 @@ public class CraftingPlanner {
 
                 if (!resolution.fullySatisfied()) {
                     for (var entry : resolution.deficit().entrySet()) {
-                        missingIngredients.add(new IngredientResolver.IngredientQuantity(
-                            entry.getKey(), entry.getValue()));
+                        IngredientResolver.IngredientQuantity iq = entry.getKey() != null
+                            ? new IngredientResolver.IngredientQuantity(entry.getKey(), entry.getValue())
+                            : null;
+                        boolean producedByPlan = false;
+                        if (iq != null && iq.ingredient() != null) {
+                            for (var producedName : producedItems) {
+                                String full = producedName.contains(":") ? producedName : "minecraft:" + producedName;
+                                var rl = ResourceLocation.tryParse(full);
+                                if (rl != null) {
+                                    var prodItem = BuiltInRegistries.ITEM.get(rl);
+                                    if (prodItem != net.minecraft.world.item.Items.AIR
+                                            && iq.ingredient().test(new ItemStack(prodItem))) {
+                                        producedByPlan = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!producedByPlan) {
+                            missingIngredients.add(iq != null
+                                ? iq : new IngredientResolver.IngredientQuantity("unknown", entry.getValue()));
+                        }
                     }
                 }
 
@@ -111,6 +139,7 @@ public class CraftingPlanner {
 
                 steps.add(new CraftStep(
                     recipeId,
+                    recipe,
                     node.recipeType(),
                     node.resultItem(),
                     node.resultCount(),
@@ -118,6 +147,7 @@ public class CraftingPlanner {
                     ingredients,
                     needsCraftingTable
                 ));
+                producedItems.add(node.resultItem());
             }
         } catch (RecipeDependencyGraph.CircularDependencyException e) {
             return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),

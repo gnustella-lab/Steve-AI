@@ -260,6 +260,10 @@ public class SteveEntity extends PathfinderMob {
     /**
      * Breaks one block on the server thread and commits its loot to the inventory exactly once.
      * Overflow remains in the world instead of being deleted or duplicated.
+     *
+     * <p>Applies per-block tool damage when a damageable tool is held in the main hand,
+     * mirroring vanilla {@code ItemStack#mineBlock} behaviour. Broken tools are removed
+     * from the main hand without duplication.</p>
      */
     public boolean breakBlockIntoInventory(BlockPos position) {
         if (!(level() instanceof ServerLevel serverLevel)
@@ -280,6 +284,7 @@ public class SteveEntity extends PathfinderMob {
             return false;
         }
         state.spawnAfterBreak(serverLevel, position, tool, true);
+        applyToolWear(state, tool);
         for (ItemStack drop : drops) {
             ItemStack remainder = inventory.insert(drop);
             if (!remainder.isEmpty()) {
@@ -287,6 +292,34 @@ public class SteveEntity extends PathfinderMob {
             }
         }
         return true;
+    }
+
+    /**
+     * Applies one block of wear to the currently held tool when it is damageable.
+     * Swaps broken tools out of the main hand atomically without dropping duplicates.
+     * Operates on the entity's actual equipped stack, then syncs the change to the
+     * SteveInventory equipment map.
+     */
+    private void applyToolWear(BlockState state, ItemStack tool) {
+        if (tool.isEmpty() || !tool.isDamageableItem()) {
+            return;
+        }
+        ItemStack entityHand = this.getMainHandItem();
+        ItemStack target = entityHand.isDamageableItem() ? entityHand : tool;
+        try {
+            target.hurtAndBreak(1, this, item -> {});
+        } catch (Throwable ignored) {
+            target.setDamageValue(target.getDamageValue() + 1);
+        }
+        if (target.getDamageValue() >= target.getMaxDamage()) {
+            target.shrink(1);
+            if (target.isEmpty()) {
+                setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+                inventory.setMainHandItem(ItemStack.EMPTY);
+            }
+        } else {
+            inventory.setMainHandItem(target.copy());
+        }
     }
 
     @Override

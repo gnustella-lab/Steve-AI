@@ -3,6 +3,7 @@ package com.steve.ai.action;
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.actions.BaseAction;
 import com.steve.ai.action.actions.IdleFollowAction;
+import com.steve.ai.action.recovery.RecoveryPolicy;
 import com.steve.ai.di.ServiceContainer;
 import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.event.EventBus;
@@ -50,6 +51,14 @@ public class ActionExecutor {
     private String pendingCommand;  // Store command while planning
     private UUID controllingPlayerUuid;
 
+    // Recovery and attempt tracking
+    private final RecoveryPolicy recoveryPolicy;
+    private int currentTaskAttempts;
+    private int planReplanCount;
+    private int recoveryDelayTicks;
+    private static final int MAX_RETRIES_PER_TASK = 3;
+    private static final int MAX_REPLANS_PER_PLAN = 2;
+
     // Plugin architecture components
     private final ActionContext actionContext;
     private final InterceptorChain interceptorChain;
@@ -64,6 +73,10 @@ public class ActionExecutor {
         this.idleFollowAction = null;
         this.planningFuture = null;
         this.pendingCommand = null;
+        this.recoveryPolicy = new RecoveryPolicy();
+        this.currentTaskAttempts = 0;
+        this.planReplanCount = 0;
+        this.recoveryDelayTicks = 0;
 
         // Initialize plugin architecture components
         this.eventBus = new SimpleEventBus();
@@ -286,6 +299,12 @@ public class ActionExecutor {
             }
         }
 
+        // Wait out any recovery delay before proceeding
+        if (recoveryDelayTicks > 0) {
+            recoveryDelayTicks--;
+            return;
+        }
+
         if (currentAction != null) {
             BaseAction action = currentAction;
             try {
@@ -297,21 +316,96 @@ public class ActionExecutor {
                     steve.getMemory().addAction(action.getDescription());
                     interceptorChain.executeAfterAction(action, result, actionContext);
 
-                    if (!result.isSuccess() && result.requiresReplanning()) {
-                        // Stop the dependent remainder of this plan. A new command may replan safely.
-                        taskQueue.clear();
-                        failAndResetState("action requested replanning");
-                        if (SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
-                            sendToGUI(steve.getSteveName(), "Problem: " + result.getMessage());
+                    if (result.isSuccess()) {
+                        // Success: reset attempts, move on
+                        currentAction = null;
+                        currentTaskAttempts = 0;
+                        if (taskQueue.isEmpty()) {
+                            clearCurrentGoal();
+                            planReplanCount = 0;
+                            if (stateMachine.getCurrentState() == AgentState.EXECUTING) {
+                                stateMachine.transitionTo(AgentState.COMPLETED, "plan finished");
+                                stateMachine.transitionTo(AgentState.IDLE, "ready");
+                            }
                         }
-                    }
+                    } else {
+                        // Failure: consult RecoveryPolicy for deterministic recovery
+                        Task failedTask = action.getTask();
+                        String actionType = failedTask != null ? failedTask.getAction() : "unknown";
+                        int replansLeft = MAX_REPLANS_PER_PLAN - planReplanCount;
 
-                    currentAction = null;
-                    if (taskQueue.isEmpty()) {
-                        clearCurrentGoal();
-                        if (stateMachine.getCurrentState() == AgentState.EXECUTING) {
-                            stateMachine.transitionTo(AgentState.COMPLETED, "plan finished");
-                            stateMachine.transitionTo(AgentState.IDLE, "ready");
+                        RecoveryPolicy.RecoveryDecision decision = recoveryPolicy.decide(
+                            result, actionType, currentTaskAttempts,
+                            MAX_RETRIES_PER_TASK, replansLeft);
+
+                        SteveMod.LOGGER.info(
+                            "Steve '{}' - Recovery decision: {} (reason: {}, delay: {})",
+                            steve.getSteveName(), decision.action(), decision.reason(),
+                            decision.delayTicks());
+
+                        currentAction = null;
+                        recoveryDelayTicks = decision.delayTicks();
+
+                        switch (decision.action()) {
+                            case RETRY_SAME -> {
+                                currentTaskAttempts++;
+                                // Re-insert task at head of queue for retry
+                                if (failedTask != null) {
+                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
+                                }
+                            }
+                            case RETRY_MODIFIED -> {
+                                currentTaskAttempts++;
+                                if (failedTask != null) {
+                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
+                                }
+                                sendToGUI(steve.getSteveName(), decision.reason());
+                            }
+                            case SKIP_CONTINUE -> {
+                                currentTaskAttempts = 0;
+                                sendToGUI(steve.getSteveName(),
+                                    "Skipping: " + decision.reason());
+                                // Just continue with next task in queue
+                            }
+                            case REPLAN -> {
+                                planReplanCount++;
+                                taskQueue.clear();
+                                currentTaskAttempts = 0;
+                                if (pendingCommand != null || currentGoal != null) {
+                                    String cmd = pendingCommand != null
+                                        ? pendingCommand : currentGoal;
+                                    sendToGUI(steve.getSteveName(),
+                                        "Replanning: " + decision.reason());
+                                    processNaturalLanguageCommand(cmd,
+                                        controllingPlayerUuid);
+                                } else {
+                                    failAndResetState(decision.reason());
+                                }
+                            }
+                            case PAUSE -> {
+                                sendToGUI(steve.getSteveName(),
+                                    "Pausing: " + decision.reason());
+                                // Re-insert for later retry after delay
+                                if (failedTask != null) {
+                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
+                                }
+                            }
+                            case ABORT -> {
+                                taskQueue.clear();
+                                currentTaskAttempts = 0;
+                                planReplanCount = 0;
+                                failAndResetState(decision.reason());
+                                sendToGUI(steve.getSteveName(),
+                                    "Stopping: " + decision.reason());
+                                clearCurrentGoal();
+                            }
+                            case ASK_PLAYER -> {
+                                taskQueue.clear();
+                                failAndResetState("needs guidance");
+                                sendToGUI(steve.getSteveName(),
+                                    "I need help: " + result.getMessage());
+                                clearCurrentGoal();
+                            }
                         }
                     }
                 } else {
@@ -488,6 +582,15 @@ public class ActionExecutor {
      */
     public boolean isPlanning() {
         return isPlanning;
+    }
+
+    /**
+     * Returns the recovery policy used for deterministic error handling.
+     *
+     * @return RecoveryPolicy instance
+     */
+    public RecoveryPolicy getRecoveryPolicy() {
+        return recoveryPolicy;
     }
 
     public void shutdown() {

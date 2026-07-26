@@ -3,41 +3,50 @@ package com.steve.ai.action.actions;
 import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
+import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.AbstractCookingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.FurnaceBlockEntity;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Smelts items in a furnace.
+ * Smelts items in a furnace using the actual server-side furnace block entity.
  *
- * <p>Locates or creates a furnace, adds fuel and items to smelt,
- * waits for processing, and retrieves the result.</p>
+ * <p>Resolves the smelting recipe by the requested output item (e.g. {@code iron_ingot}),
+ * consumes input items from the Steve inventory only when the furnace accepts them,
+ * stacks fuel additively, and waits tick-by-tick for the server furnace to cook. Result
+ * stacks are pulled into the inventory without spawning slots in mid-air.</p>
+ *
+ * <p>Threading: every state transition happens on the server thread. No {@code Thread.sleep}
+ * is used; polling is bounded by {@link #MAX_TICKS}.</p>
  */
 public class SmeltItemAction extends BaseAction {
     private String itemName;
     private int quantity;
     private int ticksRunning;
     private int smelted;
-    private static final int MAX_TICKS = 6000; // 5 minutes
-    private static final int TICKS_PER_CHECK = 100;
+    private static final int MAX_TICKS = 12_000; // 10 minutes
+    private static final int TICKS_PER_CHECK = 60;
     private BlockPos furnacePos;
-    private int itemsToAdd;
-    private int fuelToAdd;
     private boolean furnacePrepared;
-    private boolean waitingForResults;
+
+    private static final int SLOT_INPUT = 0;
+    private static final int SLOT_FUEL = 1;
+    private static final int SLOT_OUTPUT = 2;
 
     public SmeltItemAction(SteveEntity steve, Task task) {
         super(steve, task);
@@ -50,35 +59,30 @@ public class SmeltItemAction extends BaseAction {
         ticksRunning = 0;
         smelted = 0;
         furnacePos = null;
-        itemsToAdd = 0;
-        fuelToAdd = 0;
         furnacePrepared = false;
-        waitingForResults = false;
 
         if (itemName == null || itemName.isBlank()) {
-            result = ActionResult.failure(ActionResult.ERROR_VALIDATION, "Missing item parameter").build();
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                "Missing item parameter").build();
             return;
         }
 
         if (!(steve.level() instanceof ServerLevel serverLevel)) {
-            result = ActionResult.failure(ActionResult.ERROR_VALIDATION, "Must be on server side").build();
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                "Must be on server side").build();
             return;
         }
 
-        // Find the smelting recipe for the requested item
         Item targetItem = parseItem(itemName);
         if (targetItem == Items.AIR) {
-            result = ActionResult.failure(ActionResult.ERROR_VALIDATION, "Unknown item: " + itemName).build();
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                "Unknown item: " + itemName).build();
             return;
         }
 
-        // Find a furnace or create one
         furnacePos = findNearbyFurnace(serverLevel);
-        if (furnacePos == null) {
-            if (steve.getSteveInventory().count(Items.FURNACE) > 0) {
-                // Place a furnace
-                furnacePos = placeFurnace(serverLevel);
-            }
+        if (furnacePos == null && steve.getSteveInventory().count(Items.FURNACE) > 0) {
+            furnacePos = placeFurnace(serverLevel);
         }
 
         if (furnacePos == null) {
@@ -111,79 +115,48 @@ public class SmeltItemAction extends BaseAction {
         }
 
         BlockEntity be = serverLevel.getBlockEntity(furnacePos);
-        if (!(be instanceof FurnaceBlockEntity furnace)) {
-            result = ActionResult.failure(ActionResult.ERROR_UNKNOWN, "Furnace not found").build();
+        if (!(be instanceof AbstractFurnaceBlockEntity furnace)) {
+            result = ActionResult.failure(ActionResult.ERROR_ENTITY_GONE,
+                "Furnace not found at " + furnacePos).build();
+            return;
+        }
+
+        ItemStack outputStack = furnace.getItem(SLOT_OUTPUT);
+        if (!outputStack.isEmpty()) {
+            int taken = Math.min(outputStack.getCount(), quantity - smelted);
+            ItemStack retrieved = outputStack.copy();
+            retrieved.setCount(taken);
+            outputStack.shrink(taken);
+            furnace.setChanged();
+            ItemStack remainder = steve.getSteveInventory().insert(retrieved);
+            int inserted = taken - (remainder.isEmpty() ? 0 : remainder.getCount());
+            smelted += inserted;
+            if (!remainder.isEmpty()) {
+                steve.spawnAtLocation(remainder);
+            }
+            furnacePrepared = false; // re-check whether more items are queued
             return;
         }
 
         if (!furnacePrepared) {
-            // Add fuel
-            if (fuelToAdd > 0) {
-                addFuel(furnace, fuelToAdd);
-            }
-
-            // Add items to smelt
-            Item targetItem = parseItem(itemName);
-            int available = steve.getSteveInventory().count(targetItem);
-            itemsToAdd = Math.min(quantity - smelted, available);
-
-            if (itemsToAdd <= 0) {
-                result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
-                    "I don't have any " + itemName + " to smelt")
-                    .retryable(true)
-                    .build();
-                return;
-            }
-
-            // Find the smelting recipe to know what to put in
-            SmeltingRecipe recipe = findSmeltingRecipe(serverLevel, targetItem);
-            if (recipe == null) {
-                result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
-                    "No smelting recipe for " + itemName).build();
-                return;
-            }
-
-            // Add items to the top slot
-            ItemStack toSmelt = new ItemStack(targetItem, itemsToAdd);
-            furnace.getItem(0).setCount(toSmelt.getCount());
-            steve.getSteveInventory().remove(targetItem, itemsToAdd);
-
-            // Add fuel
-            addFuel(furnace, itemsToAdd * 2); // 2 fuel per item
-
-            furnacePrepared = true;
-            waitingForResults = true;
-            return;
-        }
-
-        if (waitingForResults) {
-            // Check if smelting is complete
-            ItemStack smeltedOutput = furnace.getItem(2);
-            if (!smeltedOutput.isEmpty()) {
-                // Retrieve the result
-                ItemStack retrieved = new ItemStack(smeltedOutput.getItem(), smeltedOutput.getCount());
-                furnace.getItem(2).setCount(0);
-                ItemStack remainder = steve.getSteveInventory().insert(retrieved);
-                smelted += retrieved.getCount() - remainder.getCount();
-
-                if (!remainder.isEmpty()) {
-                    steve.spawnAtLocation(remainder);
-                }
-
-                // Reset for next batch
-                furnacePrepared = false;
-                waitingForResults = false;
-                fuelToAdd = 0;
-
-                if (smelted < quantity) {
-                    // Prepare next batch
+            ItemStack existingInput = furnace.getItem(SLOT_INPUT);
+            if (existingInput.isEmpty()) {
+                int queued = queueInput(serverLevel, furnace);
+                if (queued <= 0 && smelted < quantity) {
+                    result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                        "I don't have any ingredient that smelts into " + itemName)
+                        .retryable(true).build();
                     return;
                 }
             }
+            queueFuel(furnace);
+            furnacePrepared = true;
+            furnace.setChanged();
+            return;
+        }
 
-            if (ticksRunning % TICKS_PER_CHECK == 0) {
-                steve.sendChatMessage("Smelting " + itemName + ": " + smelted + "/" + quantity);
-            }
+        if (ticksRunning % TICKS_PER_CHECK == 0) {
+            steve.sendChatMessage("Smelting " + itemName + ": " + smelted + "/" + quantity);
         }
     }
 
@@ -197,13 +170,93 @@ public class SmeltItemAction extends BaseAction {
         return "Smelt " + quantity + " " + itemName + " (" + smelted + ")";
     }
 
+    /**
+     * Queues one stack of the smelting input that produces the requested output item.
+     * Returns the number of items queued, or 0 if no ingredient is available.
+     */
+    private int queueInput(ServerLevel serverLevel, AbstractFurnaceBlockEntity furnace) {
+        Item targetItem = parseItem(itemName);
+        AbstractCookingRecipe recipe = findCookingRecipeByOutput(serverLevel, targetItem);
+        if (recipe == null) {
+            return 0;
+        }
+        Ingredient input = recipe.getIngredients().isEmpty() ? null : recipe.getIngredients().get(0);
+        if (input == null) {
+            return 0;
+        }
+        SteveInventory inventory = steve.getSteveInventory();
+        int available = 0;
+        Item chosenInput = null;
+        for (ItemStack candidate : inventory.getContents()) {
+            if (input.test(candidate)) {
+                available += candidate.getCount();
+                chosenInput = candidate.getItem();
+            }
+        }
+        if (available <= 0 || chosenInput == null) {
+            return 0;
+        }
+        int toQueue = Math.min(Math.min(available, 64), Math.max(0, quantity - smelted));
+        if (toQueue <= 0) {
+            return 0;
+        }
+        int removed = inventory.remove(chosenInput, toQueue);
+        if (removed <= 0) {
+            return 0;
+        }
+        ItemStack existing = furnace.getItem(SLOT_INPUT);
+        if (existing.isEmpty()) {
+            furnace.setItem(SLOT_INPUT, new ItemStack(chosenInput, removed));
+        } else if (existing.getItem() == chosenInput) {
+            existing.grow(removed);
+        } else {
+            inventory.insert(new ItemStack(chosenInput, removed));
+            return 0;
+        }
+        return removed;
+    }
+
+    /**
+     * Refills the fuel slot additively without destroying the existing fuel item.
+     */
+    private void queueFuel(AbstractFurnaceBlockEntity furnace) {
+        ItemStack currentFuel = furnace.getItem(SLOT_FUEL);
+        if (!currentFuel.isEmpty()) {
+            return;
+        }
+        SteveInventory inv = steve.getSteveInventory();
+        Item fuel = chooseFuel(inv);
+        if (fuel == null) {
+            return;
+        }
+        int available = inv.count(fuel);
+        int toUse = Math.min(Math.max(1, available / 8), 16);
+        if (toUse <= 0) {
+            return;
+        }
+        int removed = inv.remove(fuel, toUse);
+        if (removed <= 0) {
+            return;
+        }
+        furnace.setItem(SLOT_FUEL, new ItemStack(fuel, removed));
+    }
+
+    private Item chooseFuel(SteveInventory inv) {
+        if (inv.count(Items.COAL) > 0) return Items.COAL;
+        if (inv.count(Items.CHARCOAL) > 0) return Items.CHARCOAL;
+        if (inv.count(Items.OAK_PLANKS) > 0) return Items.OAK_PLANKS;
+        if (inv.count(Items.STICK) > 0) return Items.STICK;
+        if (inv.count(Items.OAK_LOG) > 0) return Items.OAK_LOG;
+        return null;
+    }
+
     private BlockPos findNearbyFurnace(ServerLevel level) {
         BlockPos stevePos = steve.blockPosition();
         for (int x = -4; x <= 4; x++) {
             for (int y = -2; y <= 2; y++) {
                 for (int z = -4; z <= 4; z++) {
                     BlockPos pos = stevePos.offset(x, y, z);
-                    if (level.getBlockEntity(pos) instanceof FurnaceBlockEntity) {
+                    if (level.getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity) {
                         return pos;
                     }
                 }
@@ -218,7 +271,8 @@ public class SmeltItemAction extends BaseAction {
             for (int y = -1; y <= 1; y++) {
                 for (int z = -2; z <= 2; z++) {
                     BlockPos pos = stevePos.offset(x, y, z);
-                    if (level.getBlockState(pos).isAir() && level.getBlockState(pos.below()).isSolid()) {
+                    if (level.getBlockState(pos).isAir()
+                            && level.getBlockState(pos.below()).isSolidRender(level, pos.below())) {
                         if (level.setBlock(pos, Blocks.FURNACE.defaultBlockState(), 3)) {
                             steve.getSteveInventory().remove(Items.FURNACE, 1);
                             return pos;
@@ -230,33 +284,18 @@ public class SmeltItemAction extends BaseAction {
         return null;
     }
 
-    private void addFuel(FurnaceBlockEntity furnace, int amount) {
-        Item fuel = Items.COAL;
-        if (steve.getSteveInventory().count(fuel) < amount) {
-            fuel = Items.CHARCOAL;
-            if (steve.getSteveInventory().count(fuel) < amount) {
-                fuel = Items.OAK_LOG;
-                if (steve.getSteveInventory().count(fuel) < 1) return;
-            }
-        }
-
-        int available = steve.getSteveInventory().count(fuel);
-        int toUse = Math.min(amount, available);
-        steve.getSteveInventory().remove(fuel, toUse);
-
-        ItemStack fuelStack = new ItemStack(fuel, toUse);
-        furnace.getItem(1).setCount(fuelStack.getCount());
-    }
-
-    private SmeltingRecipe findSmeltingRecipe(ServerLevel level, Item item) {
-        var recipeManager = level.getServer().getRecipeManager();
-        List<SmeltingRecipe> recipes = recipeManager.getAllRecipesFor(RecipeType.SMELTING);
-
-        for (SmeltingRecipe recipe : recipes) {
-            for (var ingredient : recipe.getIngredients()) {
-                if (ingredient.test(new ItemStack(item))) {
-                    return recipe;
+    private AbstractCookingRecipe findCookingRecipeByOutput(ServerLevel level, Item outputItem) {
+        List<SmeltingRecipe> smelting = level.getServer().getRecipeManager()
+            .getAllRecipesFor(RecipeType.SMELTING);
+        ItemStack expected = new ItemStack(outputItem);
+        for (AbstractCookingRecipe candidate : smelting) {
+            try {
+                ItemStack candidateResult = candidate.getResultItem(level.registryAccess());
+                if (!candidateResult.isEmpty() && ItemStack.isSameItemSameTags(candidateResult, expected)) {
+                    return candidate;
                 }
+            } catch (Throwable ignored) {
+                continue;
             }
         }
         return null;
