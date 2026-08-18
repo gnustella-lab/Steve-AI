@@ -352,7 +352,7 @@ public final class SteveGameTests {
     @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 160)
     public static void pausingWhilePlanningDiscardsLateResponse(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.setSteveName("AutonomyPause");
+        steve.setSteveName("AutonomyPause_" + UUID.randomUUID().toString().substring(0, 8));
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
@@ -391,7 +391,7 @@ public final class SteveGameTests {
         furnace.setItem(1, new ItemStack(Items.COAL, 16));
 
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.setSteveName("AutonomousIronGoal");
+        steve.setSteveName("AutonomousIron_" + UUID.randomUUID().toString().substring(0, 8));
         steve.moveTo(furnacePos.above(), 0.0F, 0.0F);
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.IRON_INGOT, 15));
@@ -428,7 +428,7 @@ public final class SteveGameTests {
         PermissionManager.getInstance().protectRegion(helper.getLevel(), target, target);
 
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.setSteveName("AutonomyRecovery");
+        steve.setSteveName("AutonomyRecovery_" + UUID.randomUUID().toString().substring(0, 8));
         steve.moveTo(target.above(), 0.0F, 0.0F);
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);

@@ -57,6 +57,30 @@ public final class GoalQueue {
         active = null;
     }
 
+    /** Pauses active and queued goals so a pause command is effective even between ticks. */
+    public void pauseAll(long now) {
+        pauseActive(now);
+        for (Entry entry : pending) {
+            if (!entry.goal().isTerminal() && entry.goal().pause(now)) {
+                paused.put(entry.goal().getId(), entry.goal());
+            }
+        }
+        pending.clear();
+    }
+
+    /** Requeues every paused goal in its original priority order. */
+    public void resumeAll(long now) {
+        List<AgentGoal> goals = new ArrayList<>(paused.values());
+        paused.clear();
+        goals.forEach(goal -> {
+            if (!goal.isTerminal()) {
+                goal.activate(now);
+                goal.pause(now);
+                pending.offer(new Entry(goal, sequence++));
+            }
+        });
+    }
+
     public void resume(UUID goalId, long now) {
         AgentGoal goal = paused.remove(goalId);
         if (goal != null && goal.activate(now)) {

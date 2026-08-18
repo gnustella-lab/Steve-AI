@@ -205,6 +205,7 @@ public final class AutonomyController {
         lastActionResult = null;
         lastFailure = "";
         failureTracker.clear();
+        restored = true;
         steve.getMemory().setActiveGoal(goal);
         nextThinkTick = now;
         moveTo(AgentState.OBSERVING, "new user goal");
@@ -233,22 +234,32 @@ public final class AutonomyController {
 
     public void pause() {
         long now = currentTick();
-        if (activeGoal == null || activeGoal.isTerminal()) return;
+        AgentGoal pausedGoal = activeGoal != null ? activeGoal : goalQueue.getActive();
+        if (pausedGoal == null && goalQueue.getPendingGoals().isEmpty()) return;
         cancelPlanning();
-        activeGoal.pause(now);
-        goalQueue.pauseActive(now);
+        if (pausedGoal != null && !pausedGoal.isTerminal()) {
+            pausedGoal.pause(now);
+        }
+        goalQueue.pauseAll(now);
         executor.stopAutonomousExecution();
-        steve.getMemory().setActiveGoal(activeGoal);
+        if (pausedGoal != null) {
+            steve.getMemory().setActiveGoal(pausedGoal);
+        } else {
+            prepareForSave();
+        }
         moveTo(AgentState.PAUSED, "user pause");
-        sendFeedback("Paused: " + activeGoal.getDescription(), now);
+        sendFeedback(pausedGoal == null ? "Paused queued goals." : "Paused: " + pausedGoal.getDescription(), now);
     }
 
     public void resume() {
         long now = currentTick();
         stoppedLatch = false;
         AgentGoal goal = activeGoal != null ? activeGoal : steve.getMemory().getActiveGoal();
-        if (goal == null || goal.isTerminal()) return;
-        if (goalQueue.getActive() == null) goalQueue.enqueue(goal);
+        if (goal != null && !goal.isTerminal() && goalQueue.find(goal.getId()) == null) {
+            goalQueue.enqueue(goal);
+        }
+        goalQueue.resumeAll(now);
+        if (goal == null && goalQueue.isEmpty()) return;
         activeGoal = null;
         nextThinkTick = now;
         moveTo(AgentState.OBSERVING, "user resume");
@@ -341,6 +352,12 @@ public final class AutonomyController {
             goalQueue.enqueue(pending);
         }
         if (persisted != null && !persisted.isTerminal()) {
+            if (persisted.getStatus() == GoalStatus.PAUSED) {
+                activeGoal = persisted;
+                applyControllerIdentity(activeGoal);
+                moveTo(AgentState.PAUSED, "restored paused goal");
+                return;
+            }
             persisted.pause(now);
             goalQueue.activate(persisted, now);
             activeGoal = persisted;
@@ -635,6 +652,10 @@ public final class AutonomyController {
             GoalPriority.PREREQUISITE, parent.getId(), now);
         prerequisite.setConstraints(GoalConstraints.fromDescription(description));
         prerequisite.putMetadata("parentDescription", parent.getDescription());
+        Object controllerUuid = parent.getMetadata().get("controllerUuid");
+        if (controllerUuid != null) {
+            prerequisite.putMetadata("controllerUuid", controllerUuid);
+        }
         goalQueue.enqueue(prerequisite);
         activeGoal = null;
         currentPlan = null;

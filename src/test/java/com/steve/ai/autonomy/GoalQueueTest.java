@@ -42,4 +42,21 @@ class GoalQueueTest {
         assertNull(queue.pollNext());
         assertNull(queue.getActive());
     }
+
+    @Test
+    void pauseAllRetainsPendingGoalsUntilResumeAll() {
+        GoalQueue queue = new GoalQueue();
+        AgentGoal first = AgentGoal.create("first", GoalOrigin.USER, GoalPriority.USER, null, 1L);
+        AgentGoal second = AgentGoal.create("second", GoalOrigin.MAINTENANCE,
+            GoalPriority.MAINTENANCE, null, 2L);
+        queue.enqueue(first);
+        queue.enqueue(second);
+
+        queue.pauseAll(10L);
+        assertEquals(0, queue.size());
+        assertEquals(2, queue.getPausedGoals().size());
+
+        queue.resumeAll(11L);
+        assertEquals(first, queue.pollNext());
+    }
 }

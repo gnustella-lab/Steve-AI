@@ -529,7 +529,9 @@ public class ActionExecutor {
         }
         
         // When completely idle (no tasks, no goal), follow nearest player
-        if (!autonomyManaged && taskQueue.isEmpty() && currentAction == null && currentGoal == null) {
+        if (!autonomyManaged
+                && stateMachine.getCurrentState() != AgentState.PAUSED
+                && taskQueue.isEmpty() && currentAction == null && currentGoal == null) {
             try {
                 if (idleFollowAction == null || idleFollowAction.isComplete()) {
                     idleFollowAction = new IdleFollowAction(steve);
