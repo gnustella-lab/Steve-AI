@@ -272,6 +272,11 @@ public class ActionExecutor {
         return controllingPlayerUuid;
     }
 
+    /** Sets the identity associated with the currently accepted goal. */
+    public void setControllingPlayerUuid(UUID controllerUuid) {
+        this.controllingPlayerUuid = controllerUuid;
+    }
+
     /**
      * Legacy synchronous command processing (blocking).
      *

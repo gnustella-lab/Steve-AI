@@ -98,6 +98,26 @@ class ResilientLLMClientTest {
         assertEquals(0, cache.size());
     }
 
+    @Test
+    void requestAwareCacheValidationHonorsThePlanningHorizon() {
+        AtomicInteger calls = new AtomicInteger();
+        AsyncLLMClient delegate = new FakeClient(params -> {
+            calls.incrementAndGet();
+            return CompletableFuture.completedFuture(response("bounded"));
+        });
+        LLMCache cache = new LLMCache();
+        ResilientLLMClient client = new ResilientLLMClient(delegate, cache, new LLMFallbackHandler(),
+            (value, params) -> ((Number) params.getOrDefault("horizon", 64)).intValue() >= 2);
+        Map<String, Object> request = new java.util.HashMap<>(params("system"));
+        request.put("horizon", 1);
+
+        client.sendAsync("same", request).join();
+        client.sendAsync("same", request).join();
+
+        assertEquals(2, calls.get());
+        assertEquals(0, cache.size());
+    }
+
     private static Map<String, Object> params(String systemPrompt) {
         return Map.of(
             "model", "fake-model",

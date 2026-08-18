@@ -70,6 +70,11 @@ import java.util.function.Predicate;
  */
 public class ResilientLLMClient implements AsyncLLMClient {
 
+    @FunctionalInterface
+    public interface RequestAwareCacheValidator {
+        boolean test(LLMResponse response, Map<String, Object> requestParameters);
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(ResilientLLMClient.class);
     private static final ScheduledExecutorService RETRY_SCHEDULER =
         Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -81,7 +86,7 @@ public class ResilientLLMClient implements AsyncLLMClient {
     private final AsyncLLMClient delegate;
     private final LLMCache cache;
     private final LLMFallbackHandler fallbackHandler;
-    private final Predicate<LLMResponse> cacheableResponse;
+    private final RequestAwareCacheValidator cacheableResponse;
 
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
@@ -107,10 +112,17 @@ public class ResilientLLMClient implements AsyncLLMClient {
      */
     public ResilientLLMClient(AsyncLLMClient delegate, LLMCache cache,
             LLMFallbackHandler fallbackHandler, Predicate<LLMResponse> cacheableResponse) {
+        this(delegate, cache, fallbackHandler,
+            (response, requestParameters) -> cacheableResponse == null || cacheableResponse.test(response));
+    }
+
+    /** Creates a cache validator that can include request-specific bounds such as plan horizon. */
+    public ResilientLLMClient(AsyncLLMClient delegate, LLMCache cache,
+            LLMFallbackHandler fallbackHandler, RequestAwareCacheValidator cacheableResponse) {
         this.delegate = delegate;
         this.cache = cache;
         this.fallbackHandler = fallbackHandler;
-        this.cacheableResponse = cacheableResponse == null ? response -> true : cacheableResponse;
+        this.cacheableResponse = cacheableResponse == null ? (response, requestParameters) -> true : cacheableResponse;
 
         String providerId = delegate.getProviderId();
         LOGGER.info("Initializing resilient client for provider: {}", providerId);
@@ -233,7 +245,7 @@ public class ResilientLLMClient implements AsyncLLMClient {
         try {
             return decoratedSupplier.get().toCompletableFuture()
                 .thenApply(response -> {
-                    if (cacheableResponse.test(response)) {
+                    if (cacheableResponse.test(response, params)) {
                         cache.put(requestFingerprint, model, providerId, response);
                     } else {
                         LOGGER.warn("[{}] Response failed operational validation; skipping cache", providerId);

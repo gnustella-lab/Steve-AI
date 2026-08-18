@@ -48,6 +48,9 @@ public final class AutonomyController {
     private ActionResult lastActionResult;
     private RecoveryDecision pendingRecovery;
     private CompletableFuture<ResponseParser.ParsedResponse> planningFuture;
+    private long planningGeneration;
+    private long planningRequestGeneration;
+    private UUID planningGoalId;
     private long localTick;
     private long nextThinkTick;
     private long idleTicks;
@@ -73,6 +76,9 @@ public final class AutonomyController {
         this.failureTracker = new FailureTracker(SteveConfig.AUTONOMY_MAX_REPEATED_FAILURE_FINGERPRINT.get());
         this.observationService = new ObservationService(SteveConfig.AUTONOMY_PERCEPTION_INTERVAL_TICKS.get());
         this.nextThinkTick = 0L;
+        this.planningGeneration = 0L;
+        this.planningRequestGeneration = 0L;
+        this.planningGoalId = null;
     }
 
     public void tick() {
@@ -84,18 +90,35 @@ public final class AutonomyController {
 
         restorePersistedGoal(now);
 
-        ActionExecutor.ActionCompletion completion = executor.consumeCompletedAction();
-        if (completion != null) {
-            handleActionCompletion(completion, now);
+        if (stoppedLatch || stateMachine.getCurrentState() == AgentState.PAUSED) {
+            return;
         }
 
         if (planningFuture != null) {
             if (planningFuture.isDone()) {
-                handlePlanningResult(planningFuture.getNow(null), now);
+                CompletableFuture<ResponseParser.ParsedResponse> completedFuture = planningFuture;
                 planningFuture = null;
+                boolean currentRequest = planningRequestGeneration == planningGeneration
+                    && activeGoal != null && activeGoal.getId().equals(planningGoalId)
+                    && !stoppedLatch && stateMachine.getCurrentState() != AgentState.PAUSED;
+                planningGoalId = null;
+                if (currentRequest) {
+                    try {
+                        handlePlanningResult(completedFuture.getNow(null), now);
+                    } catch (java.util.concurrent.CancellationException ignored) {
+                        // A cancelled request is intentionally discarded.
+                    } catch (RuntimeException exception) {
+                        handlePlanningResult(null, now);
+                    }
+                }
             } else {
                 return;
             }
+        }
+
+        ActionExecutor.ActionCompletion completion = executor.consumeCompletedAction();
+        if (completion != null) {
+            handleActionCompletion(completion, now);
         }
 
         if (stoppedLatch) return;
@@ -108,6 +131,7 @@ public final class AutonomyController {
             }
             SteveMemory memory = steve.getMemory();
             memory.setActiveGoal(activeGoal);
+            applyControllerIdentity(activeGoal);
             idleTicks = 0;
             moveTo(AgentState.OBSERVING, "goal activated");
             sendFeedback("Starting: " + activeGoal.getDescription(), now);
@@ -157,6 +181,9 @@ public final class AutonomyController {
 
         long now = currentTick();
         stoppedLatch = false;
+        cancelPlanning();
+        executor.setControllingPlayerUuid(controllerUuid);
+        invalidResponseAttempts = 0;
         UUID interruptedGoal = null;
         if (activeGoal != null && !activeGoal.isTerminal()) {
             interruptedGoal = activeGoal.getId();
@@ -189,8 +216,7 @@ public final class AutonomyController {
     public void stop() {
         long now = currentTick();
         stoppedLatch = true;
-        if (planningFuture != null) planningFuture.cancel(true);
-        planningFuture = null;
+        cancelPlanning();
         executor.stopAutonomousExecution();
         goalQueue.cancelAll(now);
         steve.getMemory().clearPersistedGoals();
@@ -208,6 +234,7 @@ public final class AutonomyController {
     public void pause() {
         long now = currentTick();
         if (activeGoal == null || activeGoal.isTerminal()) return;
+        cancelPlanning();
         activeGoal.pause(now);
         goalQueue.pauseActive(now);
         executor.stopAutonomousExecution();
@@ -272,16 +299,38 @@ public final class AutonomyController {
             + ", lastFailure=" + lastFailure;
     }
 
+    public void prepareForSave() {
+        SteveMemory memory = steve.getMemory();
+        AgentGoal goal = activeGoal != null ? activeGoal : goalQueue.getActive();
+        if (goal != null && !goal.isTerminal()) {
+            memory.setActiveGoal(goal);
+        }
+        for (AgentGoal pending : goalQueue.getPendingGoals()) {
+            memory.rememberGoal(pending);
+        }
+        for (AgentGoal paused : goalQueue.getPausedGoals()) {
+            memory.rememberGoal(paused);
+        }
+    }
+
     public void shutdown() {
+        prepareForSave();
         shutdown = true;
-        if (planningFuture != null) planningFuture.cancel(true);
-        planningFuture = null;
+        cancelPlanning();
         if (activeGoal != null && !activeGoal.isTerminal()) {
             activeGoal.pause(currentTick());
             steve.getMemory().setActiveGoal(activeGoal);
         }
         executor.stopAutonomousExecution();
         observationService.clear();
+    }
+
+    private void cancelPlanning() {
+        planningGeneration++;
+        if (planningFuture != null) planningFuture.cancel(true);
+        planningFuture = null;
+        planningGoalId = null;
+        planningRequestGeneration = planningGeneration;
     }
 
     private void restorePersistedGoal(long now) {
@@ -295,6 +344,7 @@ public final class AutonomyController {
             persisted.pause(now);
             goalQueue.activate(persisted, now);
             activeGoal = persisted;
+            applyControllerIdentity(activeGoal);
             sendFeedback("Resuming safely after restart: " + persisted.getDescription(), now);
         }
     }
@@ -339,6 +389,8 @@ public final class AutonomyController {
             SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get() - activeGoal.getReplanCount());
 
         activeGoal.getBudget().recordLlmCall();
+        planningRequestGeneration = planningGeneration;
+        planningGoalId = activeGoal.getId();
         moveTo(AgentState.PLANNING, "request bounded horizon");
         try {
             planningFuture = selectedPlanner.plan(context);
@@ -683,6 +735,20 @@ public final class AutonomyController {
         if (!stateMachine.transitionTo(target, reason)) {
             stateMachine.forceTransition(target, reason);
         }
+    }
+
+    private void applyControllerIdentity(AgentGoal goal) {
+        if (goal == null) return;
+        Object value = goal.getMetadata().get("controllerUuid");
+        UUID controllerUuid = null;
+        if (value != null) {
+            try {
+                controllerUuid = UUID.fromString(String.valueOf(value));
+            } catch (IllegalArgumentException ignored) {
+                // Invalid persisted controller metadata fails closed to the owner/preferred player.
+            }
+        }
+        executor.setControllingPlayerUuid(controllerUuid);
     }
 
     private long currentTick() {

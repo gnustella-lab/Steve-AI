@@ -55,11 +55,14 @@ public class TaskPlanner implements AutonomyPlanner {
 
         // Wrap with resilience patterns
         this.asyncOpenAIClient = new ResilientLLMClient(baseOpenAI, llmCache, fallbackHandler,
-            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
+            (response, requestParameters) -> ResponseParser.parseAIResponse(
+                response.getContent(), requestedHorizon(requestParameters)) != null);
         this.asyncGroqClient = new ResilientLLMClient(baseGroq, llmCache, fallbackHandler,
-            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
+            (response, requestParameters) -> ResponseParser.parseAIResponse(
+                response.getContent(), requestedHorizon(requestParameters)) != null);
         this.asyncGeminiClient = new ResilientLLMClient(baseGemini, llmCache, fallbackHandler,
-            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
+            (response, requestParameters) -> ResponseParser.parseAIResponse(
+                response.getContent(), requestedHorizon(requestParameters)) != null);
 
         SteveMod.LOGGER.info("TaskPlanner initialized with async resilient clients " +
             "(providers: openai={}, groq={}, gemini={})",
@@ -275,6 +278,11 @@ public class TaskPlanner implements AutonomyPlanner {
      */
     public boolean isProviderHealthy(String provider) {
         return getAsyncClient(provider).isHealthy();
+    }
+
+    private static int requestedHorizon(Map<String, Object> requestParameters) {
+        Object horizon = requestParameters == null ? null : requestParameters.get("horizon");
+        return horizon instanceof Number number ? Math.max(1, Math.min(64, number.intValue())) : 64;
     }
 
     public boolean validateTask(Task task) {

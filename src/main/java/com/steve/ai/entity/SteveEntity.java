@@ -211,6 +211,9 @@ public class SteveEntity extends PathfinderMob {
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString("SteveName", getSteveName());
+        if (autonomyController != null) {
+            autonomyController.prepareForSave();
+        }
         
         CompoundTag memoryTag = new CompoundTag();
         this.memory.saveToNBT(memoryTag);

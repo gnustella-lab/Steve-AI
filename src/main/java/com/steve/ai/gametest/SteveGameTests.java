@@ -349,6 +349,35 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
+    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 160)
+    public static void pausingWhilePlanningDiscardsLateResponse(GameTestHelper helper) {
+        SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
+        steve.setSteveName("AutonomyPause");
+        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPersistenceRequired();
+        helper.getLevel().addFreshEntity(steve);
+
+        CompletableFuture<ResponseParser.ParsedResponse> pending = new CompletableFuture<>();
+        AutonomyController controller = steve.getAutonomyController();
+        controller.setPlanner(context -> pending);
+        controller.submitUserGoal("Pause before the plan arrives", null);
+
+        helper.runAfterDelay(40, () -> {
+            helper.assertTrue(controller.isPlanning(), "The fake planner should still be in flight");
+            controller.pause();
+            pending.complete(ResponseParser.parseAIResponse(
+                "{\"decision\":\"act\",\"summary\":\"late\",\"goalStatus\":\"in_progress\","
+                    + "\"tasks\":[{\"action\":\"inspect_inventory\",\"parameters\":{}}]}"));
+        });
+        helper.runAfterDelay(90, () -> {
+            helper.assertTrue(controller.getState() == com.steve.ai.execution.AgentState.PAUSED,
+                "A paused controller must remain paused after a late planner completion");
+            helper.assertTrue(!steve.getActionExecutor().hasPendingAutonomousTasks(),
+                "A late plan must not enqueue autonomous actions after pause");
+            helper.succeed();
+        });
+    }
+
     @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 700)
     public static void autonomousIronGoalSmeltsAndVerifiesInventory(GameTestHelper helper) {
         BlockPos relativeFurnace = new BlockPos(1, 1, 1);
