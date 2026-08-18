@@ -349,7 +349,9 @@ public final class AutonomyController {
         restored = true;
         AgentGoal persisted = steve.getMemory().getActiveGoal();
         for (AgentGoal pending : steve.getMemory().getPersistedGoals()) {
-            goalQueue.enqueue(pending);
+            if (persisted == null || !pending.getId().equals(persisted.getId())) {
+                goalQueue.enqueue(pending);
+            }
         }
         if (persisted != null && !persisted.isTerminal()) {
             if (persisted.getStatus() == GoalStatus.PAUSED) {

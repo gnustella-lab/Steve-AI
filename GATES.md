@@ -70,22 +70,22 @@ This ledger records the final verification snapshot for the persistent autonomy 
 
 - [x] G24. Unit tests cover goal lifecycle/priority/persistence, plan steps, memory bounds, parser, evaluator, recovery, loops, and state transitions.
   - EVIDENCE: final XML reports `tests=127 failures=0 errors=0 skipped=0`.
-- [x] G25. Fake planner and Forge integration flows cover failure, replan, protected region, crafting, smelting, and success.
-  - EVIDENCE: `AutonomyIntegrationSimulationTest`; final Forge GameTest log reports all 14 required tests passed, including `AutonomyRecovery` and `AutonomousIronGoal`.
+- [x] G25. Fake planner and Forge integration flows cover failure, replan, protected region, crafting, smelting, pause safety, and success.
+  - EVIDENCE: `AutonomyIntegrationSimulationTest`, pause-while-planning GameTest; final Forge GameTest log reports all 15 required tests passed, including protected recovery and the autonomous iron goal.
 - [x] G26. `./gradlew test --rerun-tasks` passes on the final source tree.
-  - EVIDENCE: `BUILD SUCCESSFUL in 35s` after the final source snapshot.
+  - EVIDENCE: `BUILD SUCCESSFUL in 37s` after the final source snapshot.
 - [x] G27. `./gradlew clean build` passes with Java 17 and release verification.
-  - EVIDENCE: `BUILD SUCCESSFUL`; 13 actionable tasks; `verifyReleaseJar` passed.
+  - EVIDENCE: `BUILD SUCCESSFUL in 49s`; 13 actionable tasks; `verifyReleaseJar` passed.
 - [x] G28. `git diff --check` passes and required artifact entries exist.
-  - EVIDENCE: `git diff --check` exit code 0; release JAR contains 224 entries, `AutonomyController.class`, `SearchResourceAction.class`, `mods.toml`, service SPI, and Jar-in-Jar metadata.
+  - EVIDENCE: `git diff --check` exit code 0; release JAR contains 225 entries, `AutonomyController.class`, `SearchResourceAction.class`, `mods.toml`, service SPI, and Jar-in-Jar metadata.
 - [x] G29. Documentation matches the current implementation and limitations.
   - EVIDENCE: updated `README.md`, `ANALYSIS_MATRIX.md`, `TECHNICAL_DEEP_DIVE.md`, `docs/PHASE1_IMPLEMENTATION.md`, config example, and initial audit.
 - [x] G30. Final graph and worktree checks completed after the last source changes.
-  - EVIDENCE: `graphify update .` rebuilt 2,304 nodes and 5,621 edges in 128 communities; final status/diff check captured after build and GameTest.
+  - EVIDENCE: `graphify update .` rebuilt 2,325 nodes and 5,727 edges in 130 communities; final status/diff check captured after build and GameTest.
 
 ## Final artifact
 
 - Release artifact: `build/libs/steve-ai-mod-1.5.1.jar`
-- SHA-256: `72494431cc8fdbf6cf63470b749d349947d85faed6601095ac550a054038a11f`
-- Final Forge GameTest result: `All 14 required tests passed :)`
+- SHA-256: `818dc8ddfb0a04c0d6ddd591e4caf7ea03f221ae21c722087248af37bf38be75`
+- Final Forge GameTest result: `All 15 required tests passed :)`
 - Final JUnit result: `127 tests, 0 failures, 0 errors, 0 skipped`
