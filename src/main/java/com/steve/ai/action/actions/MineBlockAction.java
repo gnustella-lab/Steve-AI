@@ -400,6 +400,7 @@ public class MineBlockAction extends BaseAction {
      * Equips the best tool from inventory for mining the target block.
      */
     private void equipBestToolForMining() {
+        steve.syncEquipmentToInventory();
         previousMainHandItem = steve.getMainHandItem().copy();
         ItemStack previousTool = steve.getSteveInventory().equipBestTool(targetBlock);
         if (previousTool != null) {
