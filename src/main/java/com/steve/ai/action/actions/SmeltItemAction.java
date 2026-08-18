@@ -20,6 +20,7 @@ import net.minecraft.world.item.crafting.SmeltingRecipe;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import com.steve.ai.security.PermissionManager;
 
 import java.util.List;
 
@@ -89,6 +90,8 @@ public class SmeltItemAction extends BaseAction {
             result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
                 "No furnace available. I need a furnace to smelt items.")
                 .retryable(true)
+                .observation("missing_item", "furnace")
+                .observation("missing_quantity", 1)
                 .build();
             return;
         }
@@ -132,7 +135,11 @@ public class SmeltItemAction extends BaseAction {
             int inserted = taken - (remainder.isEmpty() ? 0 : remainder.getCount());
             smelted += inserted;
             if (!remainder.isEmpty()) {
-                steve.spawnAtLocation(remainder);
+                furnace.setItem(SLOT_OUTPUT, remainder);
+                result = ActionResult.failure(ActionResult.ERROR_INVENTORY_FULL,
+                    "Inventory filled while retrieving smelted output")
+                    .partialSuccess(smelted > 0).retryable(true).build();
+                return;
             }
             furnacePrepared = false; // re-check whether more items are queued
             return;
@@ -145,11 +152,23 @@ public class SmeltItemAction extends BaseAction {
                 if (queued <= 0 && smelted < quantity) {
                     result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
                         "I don't have any ingredient that smelts into " + itemName)
-                        .retryable(true).build();
+                        .retryable(true)
+                        .observation("missing_item", findInputName(serverLevel))
+                        .observation("missing_quantity", Math.max(1, quantity - smelted))
+                        .build();
                     return;
                 }
             }
             queueFuel(furnace);
+            if (furnace.getItem(SLOT_FUEL).isEmpty()) {
+                result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                    "No fuel available for smelting")
+                    .retryable(true)
+                    .observation("missing_item", "coal")
+                    .observation("missing_quantity", 1)
+                    .build();
+                return;
+            }
             furnacePrepared = true;
             furnace.setChanged();
             return;
@@ -176,7 +195,7 @@ public class SmeltItemAction extends BaseAction {
      */
     private int queueInput(ServerLevel serverLevel, AbstractFurnaceBlockEntity furnace) {
         Item targetItem = parseItem(itemName);
-        AbstractCookingRecipe recipe = findCookingRecipeByOutput(serverLevel, targetItem);
+        AbstractCookingRecipe recipe = findCookingRecipeWithAvailableInput(serverLevel, targetItem);
         if (recipe == null) {
             return 0;
         }
@@ -273,12 +292,29 @@ public class SmeltItemAction extends BaseAction {
                     BlockPos pos = stevePos.offset(x, y, z);
                     if (level.getBlockState(pos).isAir()
                             && level.getBlockState(pos.below()).isSolidRender(level, pos.below())) {
+                        if (PermissionManager.getInstance().isProtected(level, pos)) {
+                            continue;
+                        }
                         if (level.setBlock(pos, Blocks.FURNACE.defaultBlockState(), 3)) {
                             steve.getSteveInventory().remove(Items.FURNACE, 1);
                             return pos;
                         }
                     }
                 }
+            }
+        }
+        return null;
+    }
+
+    private AbstractCookingRecipe findCookingRecipeWithAvailableInput(ServerLevel level, Item outputItem) {
+        List<SmeltingRecipe> recipes = level.getServer().getRecipeManager()
+            .getAllRecipesFor(RecipeType.SMELTING);
+        for (AbstractCookingRecipe candidate : recipes) {
+            ItemStack output = candidate.getResultItem(level.registryAccess());
+            if (output.isEmpty() || !output.is(outputItem) || candidate.getIngredients().isEmpty()) continue;
+            Ingredient ingredient = candidate.getIngredients().get(0);
+            if (steve.getSteveInventory().getContents().stream().anyMatch(ingredient::test)) {
+                return candidate;
             }
         }
         return null;
@@ -299,6 +335,16 @@ public class SmeltItemAction extends BaseAction {
             }
         }
         return null;
+    }
+
+    private String findInputName(ServerLevel level) {
+        AbstractCookingRecipe recipe = findCookingRecipeWithAvailableInput(level, parseItem(itemName));
+        if (recipe == null) recipe = findCookingRecipeByOutput(level, parseItem(itemName));
+        if (recipe == null || recipe.getIngredients().isEmpty()) return "smelting_input";
+        ItemStack[] items = recipe.getIngredients().get(0).getItems();
+        if (items.length == 0) return "smelting_input";
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        return id == null ? "smelting_input" : id.toString();
     }
 
     private Item parseItem(String name) {

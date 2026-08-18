@@ -38,6 +38,21 @@
     # Gemini model: gemini-1.5-flash (fast), gemini-1.5-pro, gemini-2.0-flash-exp
     model = "gemini-1.5-flash"
 
+[autonomy]
+    # Persistent executive: OFF, GOAL_DRIVEN, or PROACTIVE
+    enabled = true
+    mode = "GOAL_DRIVEN"
+    thinkCooldownTicks = 40
+    maxPlanHorizon = 4
+    maxReplansPerGoal = 8
+    maxRetriesPerStep = 3
+    maxLlmCallsPerGoal = 12
+    maxConsecutiveFailures = 5
+    maxRepeatedFailureFingerprint = 2
+    idleThinkInterval = 1200
+    perceptionIntervalTicks = 20
+    proactiveMaintenance = false
+
 [behavior]
     # Ticks between action checks (20 ticks = 1 second)
     actionTickDelay = 20

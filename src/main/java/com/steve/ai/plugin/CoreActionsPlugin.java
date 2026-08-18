@@ -82,6 +82,18 @@ public class CoreActionsPlugin implements ActionPlugin {
             (steve, task, ctx) -> new GatherResourceAction(steve, task), priority);
 
         registry.register(descriptor(
+                "search_resource",
+                "Search a bounded area for a resource without teleporting",
+                ActionPermission.GATHERING,
+                JsonSchema.object()
+                    .requiredString("resource", 1, 128)
+                    .optionalInteger("maxDistance", 4, 64)
+                    .build(),
+                "{\"action\":\"search_resource\",\"parameters\":{\"resource\":\"iron_ore\",\"maxDistance\":32}}",
+                ActionCapability.MOVEMENT, ActionCapability.WORLD_READ),
+            (steve, task, ctx) -> new SearchResourceAction(steve, task), priority);
+
+        registry.register(descriptor(
                 "place",
                 "Place one block at server coordinates",
                 ActionPermission.BUILDING,

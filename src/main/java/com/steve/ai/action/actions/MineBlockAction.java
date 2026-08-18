@@ -74,7 +74,20 @@ public class MineBlockAction extends BaseAction {
         targetBlock = parseBlock(blockName);
         
         if (targetBlock == null || targetBlock == Blocks.AIR) {
-            result = ActionResult.failure("Invalid block type: " + blockName);
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                "Invalid block type: " + blockName).build();
+            return;
+        }
+
+        if (targetBlock.defaultBlockState().requiresCorrectToolForDrops()
+                && steve.getSteveInventory().findBestToolForBlock(targetBlock) == null) {
+            String requiredTool = targetBlock.getName().getString().contains("ore")
+                ? "stone_pickaxe" : "pickaxe";
+            result = ActionResult.failure(ActionResult.ERROR_TOOL_MISSING,
+                "A suitable tool is required before mining " + blockName)
+                .observation("required_tool", requiredTool)
+                .observation("target_block", blockName)
+                .build();
             return;
         }
         
@@ -114,7 +127,8 @@ public class MineBlockAction extends BaseAction {
             }
             
             currentTunnelPos = miningStartPos;
-            steve.teleportTo(miningStartPos.getX() + 0.5, miningStartPos.getY(), miningStartPos.getZ() + 0.5);
+            steve.getNavigation().moveTo(miningStartPos.getX() + 0.5, miningStartPos.getY(),
+                miningStartPos.getZ() + 0.5, 1.0);
             
             String[] dirNames = {"North", "East", "South", "West"};
             int dirIndex = miningDirectionZ == -1 ? 0 : (miningDirectionX == 1 ? 1 : (miningDirectionZ == 1 ? 2 : 3));
@@ -126,8 +140,6 @@ public class MineBlockAction extends BaseAction {
             miningDirectionX = 1; // Default to East
             miningDirectionZ = 0;
         }
-        
-        steve.setFlying(true);
         
         equipBestToolForMining();
         
@@ -146,7 +158,10 @@ public class MineBlockAction extends BaseAction {
         
         if (ticksRunning > MAX_TICKS) {
             steve.setFlying(false);
-            result = ActionResult.failure("Mining timeout - only found " + minedCount + " blocks");
+            result = ActionResult.failure(ActionResult.ERROR_PATHING,
+                "Mining search timeout - only found " + minedCount + " blocks")
+                .retryable(true).requiresReplanning(true)
+                .observation("mined", minedCount).observation("requested", targetQuantity).build();
             return;
         }
         
@@ -177,11 +192,17 @@ public class MineBlockAction extends BaseAction {
         
         if (steve.level().getBlockState(currentTarget).getBlock() == targetBlock) {
             if (isProtected(currentTarget)) {
-                result = ActionResult.failure("Target block is inside a protected region", false);
+                result = ActionResult.failure(ActionResult.ERROR_PROTECTED,
+                    "Target block is inside a protected region")
+                    .requiresReplanning(true).build();
                 return;
             }
 
-            steve.teleportTo(currentTarget.getX() + 0.5, currentTarget.getY(), currentTarget.getZ() + 0.5);
+            if (!steve.blockPosition().closerThan(currentTarget, 2.0)) {
+                steve.getNavigation().moveTo(currentTarget.getX() + 0.5, currentTarget.getY(),
+                    currentTarget.getZ() + 0.5, 1.0);
+                return;
+            }
             
             steve.swing(InteractionHand.MAIN_HAND, true);
 
@@ -297,17 +318,20 @@ public class MineBlockAction extends BaseAction {
         BlockState centerState = steve.level().getBlockState(centerPos);
         if (!centerState.isAir()) {
             if (centerState.getBlock() == Blocks.BEDROCK) {
-                result = ActionResult.failure("Tunnel is blocked by bedrock", false);
+                result = ActionResult.failure(ActionResult.ERROR_PATHING,
+                    "Tunnel is blocked by bedrock").retryable(true).requiresReplanning(true).build();
                 return;
             }
             if (isProtected(centerPos)) {
-                result = ActionResult.failure("Tunnel reached a protected region", false);
+                result = ActionResult.failure(ActionResult.ERROR_PROTECTED,
+                    "Tunnel reached a protected region").requiresReplanning(true).build();
                 return;
             }
             steve.swing(InteractionHand.MAIN_HAND, true);
             if (!steve.breakBlockIntoInventory(centerPos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", centerPos);
-                result = ActionResult.failure("Minecraft rejected tunnel mining at " + centerPos);
+                result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
+                    "Minecraft rejected tunnel mining at " + centerPos).retryable(true).build();
                 return;
             }
             SteveMod.LOGGER.info("Steve '{}' mining tunnel at {}", steve.getSteveName(), centerPos);
@@ -316,22 +340,25 @@ public class MineBlockAction extends BaseAction {
         BlockState aboveState = steve.level().getBlockState(abovePos);
         if (!aboveState.isAir()) {
             if (aboveState.getBlock() == Blocks.BEDROCK) {
-                result = ActionResult.failure("Tunnel ceiling is blocked by bedrock", false);
+                result = ActionResult.failure(ActionResult.ERROR_PATHING,
+                    "Tunnel ceiling is blocked by bedrock").retryable(true).requiresReplanning(true).build();
                 return;
             }
             if (isProtected(abovePos)) {
-                result = ActionResult.failure("Tunnel reached a protected region", false);
+                result = ActionResult.failure(ActionResult.ERROR_PROTECTED,
+                    "Tunnel reached a protected region").requiresReplanning(true).build();
                 return;
             }
             steve.swing(InteractionHand.MAIN_HAND, true);
             if (!steve.breakBlockIntoInventory(abovePos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", abovePos);
-                result = ActionResult.failure("Minecraft rejected tunnel mining at " + abovePos);
+                result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
+                    "Minecraft rejected tunnel mining at " + abovePos).retryable(true).build();
                 return;
             }
         }
 
-        steve.teleportTo(centerPos.getX() + 0.5, centerPos.getY(), centerPos.getZ() + 0.5);
+        steve.getNavigation().moveTo(centerPos.getX() + 0.5, centerPos.getY(), centerPos.getZ() + 0.5, 1.0);
         
         currentTunnelPos = currentTunnelPos.offset(miningDirectionX, 0, miningDirectionZ);
         

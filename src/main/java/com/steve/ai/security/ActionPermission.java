@@ -82,7 +82,7 @@ public enum ActionPermission {
 
         return switch (actionName.toLowerCase()) {
             case "pathfind", "follow" -> MOVEMENT;
-            case "mine", "gather" -> GATHERING;
+            case "mine", "gather", "search_resource" -> GATHERING;
             case "place", "build" -> BUILDING;
             case "attack" -> COMBAT;
             case "pickup_item", "give_item", "deposit_item", "withdraw_item",

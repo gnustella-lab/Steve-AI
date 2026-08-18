@@ -65,16 +65,21 @@ The agents are pretty good at figuring out what you mean. You don't need to be s
 
 ### System Overview
 
-Each Steve runs an autonomous agent loop that processes natural language commands through an LLM, converts them into structured actions, and executes them using Minecraft's game mechanics. The system uses a direct action execution model optimized for real-time gameplay rather than a traditional ReAct framework.
+Each Steve has a persistent, bounded executive. A user command becomes an `AgentGoal`, not a one-shot string. The executive observes the server world, requests a small planning horizon asynchronously, delegates tick-based actions to `ActionExecutor`, evaluates the result, and recovers or replans without requiring another command.
 
 **Core execution flow:**
-1. User input captured via GUI (press K)
-2. Task sent to TaskPlanner with conversation context
-3. LLM (Groq/OpenAI/Gemini) generates structured action plan
-4. ResponseParser extracts actions from LLM response
-5. ActionExecutor processes actions through specialized action classes
-6. Actions execute tick-by-tick to avoid freezing the game
-7. Results fed back into conversation memory for context
+1. User input captured through `/steve goal` or the GUI
+2. `AutonomyController` creates a persistent goal with provenance, constraints, parent relation, and budget
+3. `ObservationService` creates a bounded immutable `ObservationSnapshot`
+4. `TaskPlanner` receives the goal, active subgoal, relevant memory, recent results, failed approaches, action schemas, and remaining budget
+5. `ResponseParser` accepts only the bounded operational decision schema
+6. `Plan` and `PlanStep` represent the current receding horizon
+7. `ActionExecutor` runs one action at a time on server ticks
+8. `GoalEvaluator` verifies deterministic completion
+9. `RecoveryEngine` retries, creates prerequisite goals, records protected locations, or requests a fresh horizon
+10. `SteveMemory` stores bounded episodic, spatial, failure, and goal history
+
+HTTP remains asynchronous. World, inventory, navigation, entity, and NBT mutations remain on the server thread.
 
 ### Core Components
 
@@ -85,17 +90,17 @@ Each Steve runs an autonomous agent loop that processes natural language command
 - **ResponseParser**: Extracts structured action sequences from LLM responses
 
 **Action System** (`com.steve.ai.action`)
-- **ActionExecutor**: Tick-based action execution engine (prevents game freezing)
-- **BaseAction**: Abstract class for all actions (mine, build, move, combat, etc.)
-- **Task**: Data model for action parameters and metadata
-- **Available Actions**:
-  - MineBlockAction: Intelligent ore/block mining with pathfinding
-  - BuildStructureAction: Procedural and template-based building
-  - PlaceBlockAction: Single block placement with validation
-  - MoveToAction: Pathfinding-based movement
-  - AttackAction: Combat with target selection
-  - FollowAction: Player/entity following
-  - WaitAction: Controlled delays and synchronization
+- **ActionExecutor**: Tick-based action runtime. It does not own autonomous goal recovery.
+- **BaseAction**: Abstract lifecycle with server-thread start, tick, cancel, finish, and structured result hooks.
+- **Plan / PlanStep**: Bounded executable horizon and per-step progress metadata.
+- **SearchResourceAction**: Bounded pathfinding-aware resource discovery without teleporting.
+- **Available action families**:
+  - movement: `pathfind`, `follow`
+  - gathering: `mine`, `gather`, `search_resource`, `pickup_item`
+  - construction: `place`, `build`
+  - inventory: give, deposit, withdraw, equip, unequip, drop, consume, inspect
+  - survival processing: `craft`, `smelt`
+  - combat: `attack`
 
 **Structure Generation** (`com.steve.ai.structure`)
 - **StructureGenerators**: Procedural generation algorithms (houses, castles, towers, barns)
@@ -109,10 +114,19 @@ Each Steve runs an autonomous agent loop that processes natural language command
 - **Conflict prevention**: Atomic block placement with position tracking
 - **Dynamic rebalancing**: Reassigns work when agents finish early
 
-**Memory & Context** (`com.steve.ai.memory`)
-- **SteveMemory**: Per-agent conversation history and task context
-- **WorldKnowledge**: Tracks discovered resources, landmarks, and spatial data
-- **StructureRegistry**: Catalogs built structures for reference and avoidance
+**Memory & Context** (`com.steve.ai.memory`, `com.steve.ai.perception`)
+- **SteveMemory**: Bounded persistent memory for active/pending goals, recent episodes, goal outcomes, spatial facts, protected locations, and failed approaches.
+- **WorldFact**: Timestamped, confidence-scored, dimension-aware facts with TTL.
+- **EpisodicMemoryEntry**: Compact action/result/goal records.
+- **ObservationSnapshot**: Immutable point-in-time perception, distinct from historical memory.
+- **ObservationService**: Cooldown-based perception scheduler with bounded relevance selection.
+- **StructureRegistry**: Catalogs built structures for reference and avoidance.
+
+**Autonomous Executive** (`com.steve.ai.autonomy`)
+- **AutonomyController**: Goal queue, observe/plan/act/evaluate/recover loop, asynchronous planning, interruption semantics, prerequisites, and budgets.
+- **AutonomyMode**: `OFF`, `GOAL_DRIVEN`, and `PROACTIVE`.
+- **RecoveryEngine / FailureTracker**: Deterministic recovery and repeated-strategy protection.
+- **GoalEvaluator**: Conservative verification of inventory, delivery, position, and completed horizons.
 
 **Code Execution** (`com.steve.ai.execution`)
 - JavaScript execution is currently disabled. The compatibility facade rejects scripts until
@@ -123,14 +137,17 @@ Each Steve runs an autonomous agent loop that processes natural language command
 **Tick-Based Execution**
 Actions run incrementally across multiple game ticks rather than blocking. This prevents server freezes and maintains responsiveness. Each action's `tick()` method does minimal work per frame and tracks progress internally.
 
-**Direct Action Execution (Not Traditional ReAct)**
-While inspired by ReAct, we use direct action execution for real-time gameplay. The LLM generates complete action sequences upfront rather than iterative observe-think-act cycles. This reduces API calls and latency, critical for game responsiveness.
+**Goal-driven planning**
+The normal mode uses receding-horizon planning. The LLM proposes only a small number of executable tasks. Steve observes again after progress or failure, verifies deterministic conditions, and requests another horizon when the goal remains incomplete. This keeps context and API spending bounded while allowing the world to change.
+
+**Server-thread boundary**
+LLM and HTTP futures return immutable response data. The entity tick consumes those results and is the only path that mutates navigation, blocks, entities, inventories, containers, equipment, or NBT.
 
 **Multi-Agent Coordination**
-Collaborative builds use deterministic spatial partitioning. Structures are divided into rectangular sections based on agent count. Each Steve claims a section atomically, preventing conflicts. The manager is fully server-side using ConcurrentHashMap for thread safety.
+Collaborative builds continue to use deterministic spatial partitioning. Goal and plan identifiers are designed so a future shared job board can be added without changing the single-agent executive.
 
 **Memory Management**
-Context windows are managed by pruning old messages while keeping recent exchanges and critical world state. Each LLM call includes: conversation history (last 10 exchanges), current task details, Steve's position/inventory, and known world features.
+Context windows use bounded recent episodes, top relevant world facts, current plan steps, failed-strategy fingerprints, and current budget. Persisted memory is capped and versioned; transient `BaseAction` instances are never resumed blindly after a restart.
 
 ### Integration with Minecraft
 
@@ -234,55 +251,71 @@ We welcome contributions! Here's how to get started:
 
 ## Configuration
 
-Edit `config/steve-common.toml`:
+Edit `config/steve-common.toml` or start from `config/steve-common.toml.example`:
 
 ```toml
-[llm]
-provider = "groq"  # Options: openai, groq, gemini
-
-[openai]
-apiKey = "sk-..."
-model = "gpt-3.5-turbo"
-maxTokens = 1000
+[ai]
+provider = "groq"
+maxTokens = 8000
 temperature = 0.7
 
-[groq]
-apiKey = "gsk_..."
-model = "llama3-70b-8192"
-maxTokens = 1000
+[autonomy]
+enabled = true
+mode = "GOAL_DRIVEN" # OFF, GOAL_DRIVEN, PROACTIVE
+thinkCooldownTicks = 40
+maxPlanHorizon = 4
+maxReplansPerGoal = 8
+maxRetriesPerStep = 3
+maxLlmCallsPerGoal = 12
+maxConsecutiveFailures = 5
+maxRepeatedFailureFingerprint = 2
+idleThinkInterval = 1200
+perceptionIntervalTicks = 20
+proactiveMaintenance = false
 
-[gemini]
-apiKey = "AI..."
-model = "gemini-1.5-flash"
-maxTokens = 1000
+[groq]
+apiKey = ""
+model = "llama-3.1-8b-instant"
 ```
+
+API keys can also be supplied through `STEVE_OPENAI_API_KEY`, `STEVE_GROQ_API_KEY`, or `STEVE_GEMINI_API_KEY`. They are never shown in autonomy status output.
+
+Useful commands:
+
+```text
+/steve goal <name> <goal>
+/steve tell <name> <goal>       # compatibility alias
+/steve status <name>
+/steve pause <name>
+/steve resume <name>
+/steve stop <name>              # absolute cancellation, no automatic resume
+```
+
+`OFF` preserves the legacy command-to-plan path. `GOAL_DRIVEN` is the safe default for explicit user goals. `PROACTIVE` is opt-in and currently limited to configured maintenance heuristics.
 
 **Performance Tips:**
 - Use Groq for fastest inference (recommended for gameplay)
 - GPT-4 for better planning but higher latency
 - Lower temperature (0.5-0.7) for more deterministic actions
 
-## Known Issues
+## Current Limitations
 
-**The agents are only as smart as the LLM.** GPT-3.5 works but makes occasional weird decisions. GPT-4 is noticeably better at multi-step planning.
+- The default `GOAL_DRIVEN` mode can continue user goals across action failures, missing materials, tool prerequisites, and bounded replans. It does not invent unrelated goals.
+- `PROACTIVE` is opt-in and maintenance is disabled by default. It must not be used as a griefing or unrestricted construction policy.
+- A goal is marked complete only when a deterministic evaluator can verify it or when an unsupported semantic goal has a successful bounded terminal action. Deterministic inventory and delivery goals require observed quantities or delivery results.
+- Protected regions and descriptor permissions remain authoritative. The executive never falls back to commands, shell execution, reflection, or arbitrary Java execution.
+- Resource search and mining are bounded. Steve can still become `BLOCKED` when the configured retry, replan, or LLM budget is exhausted.
+- Crafting and smelting are registered and integrated with prerequisite reporting, but full survival reliability depends on the actual world, recipes, containers, navigation, and available materials.
 
-**No crafting yet.** Agents can mine and place blocks but can't craft tools. We're working on it.
+## Future Work
 
-**Actions are synchronous.** If a Steve is mining, it can't do anything else until done. Planning to add proper async execution.
-
-**Memory resets on restart.** Right now context only persists during a play session. We're adding persistent memory with a vector DB.
-
-## What's Next
-
-Planned features:
-- Crafting system (agents make their own tools)
-- Voice commands via Whisper API
-- Vector database for long-term memory
-- Async action execution for multitasking
-- More building templates and procedural generation
-- Enhanced pathfinding for complex terrain
-
-Goal is to make this actually useful for survival gameplay, not just a tech demo.
+Planned follow-up work:
+- richer navigation alternatives and path quality scoring
+- more structure templates and deterministic construction planning
+- shared job board and resource reservations for multi-agent work
+- voice commands via a separate, permissioned input layer
+- additional GameTests for restart, protected regions, and long-running goals
+- optional compact memory summaries for very long sessions
 
 ## Why We Made This
 

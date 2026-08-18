@@ -70,29 +70,29 @@ public class AgentStateMachine {
     static {
         VALID_TRANSITIONS = new EnumMap<>(AgentState.class);
 
-        // IDLE can go to PLANNING (new command)
-        VALID_TRANSITIONS.put(AgentState.IDLE,
-            EnumSet.of(AgentState.PLANNING));
-
-        // PLANNING can go to EXECUTING (success) or FAILED (error)
+        VALID_TRANSITIONS.put(AgentState.IDLE, EnumSet.of(AgentState.OBSERVING, AgentState.PLANNING));
+        VALID_TRANSITIONS.put(AgentState.OBSERVING,
+            EnumSet.of(AgentState.PLANNING, AgentState.RECOVERING, AgentState.PAUSED, AgentState.IDLE));
         VALID_TRANSITIONS.put(AgentState.PLANNING,
-            EnumSet.of(AgentState.EXECUTING, AgentState.FAILED, AgentState.IDLE));
-
-        // EXECUTING can complete, fail, or pause
+            EnumSet.of(AgentState.EXECUTING, AgentState.OBSERVING, AgentState.RECOVERING,
+                AgentState.BLOCKED, AgentState.FAILED, AgentState.PAUSED, AgentState.IDLE));
         VALID_TRANSITIONS.put(AgentState.EXECUTING,
-            EnumSet.of(AgentState.COMPLETED, AgentState.FAILED, AgentState.PAUSED));
-
-        // PAUSED can resume or cancel
+            EnumSet.of(AgentState.EVALUATING, AgentState.RECOVERING, AgentState.PAUSED,
+                AgentState.BLOCKED, AgentState.FAILED));
+        VALID_TRANSITIONS.put(AgentState.EVALUATING,
+            EnumSet.of(AgentState.OBSERVING, AgentState.COMPLETED, AgentState.RECOVERING,
+                AgentState.BLOCKED, AgentState.FAILED, AgentState.IDLE));
+        VALID_TRANSITIONS.put(AgentState.RECOVERING,
+            EnumSet.of(AgentState.EXECUTING, AgentState.OBSERVING, AgentState.PLANNING,
+                AgentState.BLOCKED, AgentState.PAUSED, AgentState.FAILED));
         VALID_TRANSITIONS.put(AgentState.PAUSED,
-            EnumSet.of(AgentState.EXECUTING, AgentState.IDLE));
-
-        // COMPLETED goes back to IDLE
+            EnumSet.of(AgentState.OBSERVING, AgentState.PLANNING, AgentState.EXECUTING, AgentState.IDLE));
+        VALID_TRANSITIONS.put(AgentState.BLOCKED,
+            EnumSet.of(AgentState.IDLE, AgentState.OBSERVING, AgentState.PLANNING));
         VALID_TRANSITIONS.put(AgentState.COMPLETED,
-            EnumSet.of(AgentState.IDLE));
-
-        // FAILED can go back to IDLE (reset)
+            EnumSet.of(AgentState.IDLE, AgentState.OBSERVING));
         VALID_TRANSITIONS.put(AgentState.FAILED,
-            EnumSet.of(AgentState.IDLE));
+            EnumSet.of(AgentState.IDLE, AgentState.OBSERVING));
     }
 
     /**

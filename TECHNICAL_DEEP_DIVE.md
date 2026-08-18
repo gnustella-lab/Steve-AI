@@ -1,10 +1,31 @@
 # Steve AI - Complete Technical Deep Dive
 
-**Date**: November 2025
-**Project**: Steve AI - LLM-Powered Minecraft Autonomous Agents
-**Repository**: https://github.com/YuvDwi/Steve
+**Status note:** This is a historical technical document. The current source of truth is `src/main`. The repository now uses a persistent `AutonomyController`, `AgentGoal`, receding-horizon `Plan`, bounded `ObservationSnapshot`, structured memory, deterministic recovery, and the current action registry. Examples below that describe one-shot planning, old action names, or missing crafting are archival and must not be used as implementation contracts.
 
 ---
+
+## Current Architecture Addendum
+
+The runtime path for a user goal is now:
+
+```text
+user command
+  -> AgentGoal + constraints + provenance
+  -> GoalQueue
+  -> ObservationService / ObservationSnapshot
+  -> PlanningContext / async TaskPlanner
+  -> bounded ResponseParser decision
+  -> Plan / PlanStep
+  -> ActionExecutor tick runtime
+  -> ActionCompletion
+  -> GoalEvaluator
+  -> RecoveryEngine or prerequisite goal
+  -> bounded replan
+  -> verified completion and structured memory
+```
+
+`ActionExecutor` remains server-thread runtime code. It does not perform HTTP calls, wait on futures, or own autonomous recovery decisions. Futures only deliver immutable parsed responses; the entity tick applies world mutations.
+
 
 ## Table of Contents
 

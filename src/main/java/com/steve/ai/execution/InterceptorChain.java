@@ -119,7 +119,7 @@ public class InterceptorChain {
             } catch (Exception e) {
                 LOGGER.error("Error in interceptor {} beforeAction: {}",
                     interceptor.getName(), e.getMessage(), e);
-                // Continue to other interceptors
+                return false;
             }
         }
         return true;

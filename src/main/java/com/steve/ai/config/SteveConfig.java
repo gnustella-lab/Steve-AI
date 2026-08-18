@@ -48,6 +48,20 @@ public class SteveConfig {
     public static final ForgeConfigSpec.BooleanValue SURVIVAL_CONSTRUCTION;
     public static final ForgeConfigSpec.BooleanValue CREATIVE_CONSTRUCTION;
 
+    // ── Autonomous executive ────────────────────────────────────────
+    public static final ForgeConfigSpec.BooleanValue AUTONOMY_ENABLED;
+    public static final ForgeConfigSpec.ConfigValue<String> AUTONOMY_MODE;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_THINK_COOLDOWN_TICKS;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_PLAN_HORIZON;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_REPLANS_PER_GOAL;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_RETRIES_PER_STEP;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_LLM_CALLS_PER_GOAL;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_CONSECUTIVE_FAILURES;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_REPEATED_FAILURE_FINGERPRINT;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_IDLE_THINK_INTERVAL;
+    public static final ForgeConfigSpec.IntValue AUTONOMY_PERCEPTION_INTERVAL_TICKS;
+    public static final ForgeConfigSpec.BooleanValue AUTONOMY_PROACTIVE_MAINTENANCE;
+
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
@@ -104,6 +118,59 @@ public class SteveConfig {
         GEMINI_MODEL = builder
             .comment("Gemini model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp)")
             .define("model", "gemini-1.5-flash");
+
+        builder.pop();
+
+        // ── Persistent autonomous executive ──────────────────────────
+        builder.comment("Persistent goal-driven executive").push("autonomy");
+
+        AUTONOMY_ENABLED = builder
+            .comment("Enable the autonomous executive. OFF mode remains available for legacy behavior.")
+            .define("enabled", true);
+
+        AUTONOMY_MODE = builder
+            .comment("Autonomy mode: OFF, GOAL_DRIVEN, or PROACTIVE")
+            .define("mode", "GOAL_DRIVEN");
+
+        AUTONOMY_THINK_COOLDOWN_TICKS = builder
+            .comment("Minimum ticks between autonomous planning requests")
+            .defineInRange("thinkCooldownTicks", 40, 1, 2_400);
+
+        AUTONOMY_MAX_PLAN_HORIZON = builder
+            .comment("Maximum number of actions returned in one receding planning horizon")
+            .defineInRange("maxPlanHorizon", 4, 1, 16);
+
+        AUTONOMY_MAX_REPLANS_PER_GOAL = builder
+            .comment("Maximum autonomous replans for one goal")
+            .defineInRange("maxReplansPerGoal", 8, 0, 128);
+
+        AUTONOMY_MAX_RETRIES_PER_STEP = builder
+            .comment("Maximum deterministic retries for one plan step")
+            .defineInRange("maxRetriesPerStep", 3, 0, 32);
+
+        AUTONOMY_MAX_LLM_CALLS_PER_GOAL = builder
+            .comment("Maximum LLM calls charged to one goal")
+            .defineInRange("maxLlmCallsPerGoal", 12, 0, 128);
+
+        AUTONOMY_MAX_CONSECUTIVE_FAILURES = builder
+            .comment("Maximum consecutive failures before a goal is blocked")
+            .defineInRange("maxConsecutiveFailures", 5, 1, 32);
+
+        AUTONOMY_MAX_REPEATED_FAILURE_FINGERPRINT = builder
+            .comment("Maximum repeats of the same strategy fingerprint")
+            .defineInRange("maxRepeatedFailureFingerprint", 2, 1, 16);
+
+        AUTONOMY_IDLE_THINK_INTERVAL = builder
+            .comment("Ticks between optional proactive maintenance checks")
+            .defineInRange("idleThinkInterval", 1_200, 100, 24_000);
+
+        AUTONOMY_PERCEPTION_INTERVAL_TICKS = builder
+            .comment("Minimum ticks between bounded perception snapshots")
+            .defineInRange("perceptionIntervalTicks", 20, 1, 1_200);
+
+        AUTONOMY_PROACTIVE_MAINTENANCE = builder
+            .comment("Allow explicitly configured, non-destructive maintenance goals while idle")
+            .define("proactiveMaintenance", false);
 
         builder.pop();
 

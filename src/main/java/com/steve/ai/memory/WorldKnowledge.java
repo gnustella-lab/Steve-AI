@@ -16,13 +16,21 @@ import java.util.*;
 
 public class WorldKnowledge {
     private final SteveEntity steve;
-    private final int scanRadius = 16;
+    private final int scanRadius;
+    private final int maxBlockSamples;
     private Map<Block, Integer> nearbyBlocks;
     private List<Entity> nearbyEntities;
     private String biomeName;
 
     public WorldKnowledge(SteveEntity steve) {
+        this(steve, 16, 256);
+    }
+
+    /** Creates a bounded observation scan. The default is deliberately not a cubic full scan. */
+    public WorldKnowledge(SteveEntity steve, int scanRadius, int maxBlockSamples) {
         this.steve = steve;
+        this.scanRadius = Math.max(2, Math.min(scanRadius, 32));
+        this.maxBlockSamples = Math.max(32, Math.min(maxBlockSamples, 2_048));
         scan();
     }
 
@@ -52,9 +60,14 @@ public class WorldKnowledge {
         Level level = steve.level();
         BlockPos stevePos = steve.blockPosition();
         
+        int sampled = 0;
+        outer:
         for (int x = -scanRadius; x <= scanRadius; x += 2) {
             for (int y = -scanRadius; y <= scanRadius; y += 2) {
                 for (int z = -scanRadius; z <= scanRadius; z += 2) {
+                    if (sampled++ >= maxBlockSamples) {
+                        break outer;
+                    }
                     BlockPos checkPos = stevePos.offset(x, y, z);
                     recordBlock(level, checkPos);
                 }

@@ -23,6 +23,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
+import java.util.function.Predicate;
 
 /**
  * Decorator that adds resilience patterns to an AsyncLLMClient.
@@ -80,6 +81,7 @@ public class ResilientLLMClient implements AsyncLLMClient {
     private final AsyncLLMClient delegate;
     private final LLMCache cache;
     private final LLMFallbackHandler fallbackHandler;
+    private final Predicate<LLMResponse> cacheableResponse;
 
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
@@ -96,9 +98,19 @@ public class ResilientLLMClient implements AsyncLLMClient {
      * @param fallbackHandler Handler for fallback responses when all fails
      */
     public ResilientLLMClient(AsyncLLMClient delegate, LLMCache cache, LLMFallbackHandler fallbackHandler) {
+        this(delegate, cache, fallbackHandler, response -> true);
+    }
+
+    /**
+     * Creates a resilient client with a response validation predicate. Transport success alone
+     * must not cache malformed operational responses.
+     */
+    public ResilientLLMClient(AsyncLLMClient delegate, LLMCache cache,
+            LLMFallbackHandler fallbackHandler, Predicate<LLMResponse> cacheableResponse) {
         this.delegate = delegate;
         this.cache = cache;
         this.fallbackHandler = fallbackHandler;
+        this.cacheableResponse = cacheableResponse == null ? response -> true : cacheableResponse;
 
         String providerId = delegate.getProviderId();
         LOGGER.info("Initializing resilient client for provider: {}", providerId);
@@ -221,9 +233,12 @@ public class ResilientLLMClient implements AsyncLLMClient {
         try {
             return decoratedSupplier.get().toCompletableFuture()
                 .thenApply(response -> {
-                    // Cache successful response
-                    cache.put(requestFingerprint, model, providerId, response);
-                    LOGGER.debug("[{}] Request successful, cached response (latency: {}ms, tokens: {})",
+                    if (cacheableResponse.test(response)) {
+                        cache.put(requestFingerprint, model, providerId, response);
+                    } else {
+                        LOGGER.warn("[{}] Response failed operational validation; skipping cache", providerId);
+                    }
+                    LOGGER.debug("[{}] Request successful (latency: {}ms, tokens: {})",
                         providerId, response.getLatencyMs(), response.getTokensUsed());
                     return response;
                 })

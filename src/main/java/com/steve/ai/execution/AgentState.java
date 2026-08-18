@@ -1,69 +1,17 @@
 package com.steve.ai.execution;
 
-/**
- * Enumeration of possible agent states in the state machine.
- *
- * <p>Follows the State Pattern to manage explicit state transitions.
- * Invalid transitions are prevented by the AgentStateMachine.</p>
- *
- * <p><b>State Transition Diagram:</b></p>
- * <pre>
- *                    ┌─────────────────────────────────────┐
- *                    │                                     │
- *                    ▼                                     │
- *   ┌──────────┐   ┌──────────┐   ┌───────────┐   ┌───────────┐
- *   │   IDLE   │──▶│ PLANNING │──▶│ EXECUTING │──▶│ COMPLETED │
- *   └──────────┘   └──────────┘   └───────────┘   └───────────┘
- *        ▲              │              │               │
- *        │              │              │               │
- *        │              ▼              ▼               │
- *        │         ┌──────────┐   ┌──────────┐        │
- *        │         │  FAILED  │   │  PAUSED  │        │
- *        │         └──────────┘   └──────────┘        │
- *        │              │              │               │
- *        └──────────────┴──────────────┴───────────────┘
- * </pre>
- *
- * @since 1.1.0
- * @see AgentStateMachine
- */
+/** Explicit phases of the persistent observe, plan, act, evaluate loop. */
 public enum AgentState {
-
-    /**
-     * Agent is idle, waiting for a command.
-     * Can follow player, look around, etc.
-     */
-    IDLE("Idle", "Agent is waiting for commands"),
-
-    /**
-     * Agent is processing a command through the LLM.
-     * Async planning is in progress.
-     */
-    PLANNING("Planning", "Processing command with AI"),
-
-    /**
-     * Agent is actively executing tasks.
-     * Actions are being performed.
-     */
-    EXECUTING("Executing", "Performing actions"),
-
-    /**
-     * Agent execution is temporarily paused.
-     * Can be resumed to EXECUTING state.
-     */
-    PAUSED("Paused", "Execution temporarily suspended"),
-
-    /**
-     * Agent has completed all tasks successfully.
-     * Transitions back to IDLE automatically.
-     */
-    COMPLETED("Completed", "All tasks finished successfully"),
-
-    /**
-     * Agent encountered an error and stopped.
-     * May require user intervention or retry.
-     */
-    FAILED("Failed", "Encountered an error");
+    IDLE("Idle", "Waiting for a goal"),
+    OBSERVING("Observing", "Refreshing the bounded world snapshot"),
+    PLANNING("Planning", "Generating the next bounded horizon"),
+    EXECUTING("Executing", "Running one tick-based action"),
+    EVALUATING("Evaluating", "Checking action progress and goal conditions"),
+    RECOVERING("Recovering", "Applying deterministic recovery or replanning"),
+    PAUSED("Paused", "Execution is paused"),
+    BLOCKED("Blocked", "No safe bounded strategy remains"),
+    COMPLETED("Completed", "The current goal was verified"),
+    FAILED("Failed", "The current goal failed");
 
     private final String displayName;
     private final String description;
@@ -73,48 +21,19 @@ public enum AgentState {
         this.description = description;
     }
 
-    /**
-     * Returns the human-readable display name.
-     *
-     * @return Display name
-     */
-    public String getDisplayName() {
-        return displayName;
-    }
+    public String getDisplayName() { return displayName; }
+    public String getDescription() { return description; }
 
-    /**
-     * Returns the state description.
-     *
-     * @return Description
-     */
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * Checks if this state allows receiving new commands.
-     *
-     * @return true if new commands can be processed
-     */
     public boolean canAcceptCommands() {
-        return this == IDLE || this == COMPLETED || this == FAILED;
+        return this == IDLE || this == PAUSED || this == BLOCKED || this == COMPLETED || this == FAILED;
     }
 
-    /**
-     * Checks if this state is a terminal state.
-     *
-     * @return true if terminal (COMPLETED or FAILED)
-     */
     public boolean isTerminal() {
-        return this == COMPLETED || this == FAILED;
+        return this == COMPLETED || this == FAILED || this == BLOCKED;
     }
 
-    /**
-     * Checks if this state is an active state (doing work).
-     *
-     * @return true if actively working
-     */
     public boolean isActive() {
-        return this == PLANNING || this == EXECUTING;
+        return this == OBSERVING || this == PLANNING || this == EXECUTING
+            || this == EVALUATING || this == RECOVERING;
     }
 }

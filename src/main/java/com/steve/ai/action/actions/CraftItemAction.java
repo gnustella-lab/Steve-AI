@@ -65,10 +65,14 @@ public class CraftItemAction extends BaseAction {
 
         if (plan == null || !plan.achievable()) {
             String reason = plan != null ? plan.failureReason() : "No plan generated";
-            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
-                "Cannot craft " + itemName + ": " + reason)
-                .retryable(false)
-                .build();
+            ActionResult.Builder failure = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                "Cannot craft " + itemName + ": " + reason).retryable(true);
+            if (plan != null && !plan.missingIngredients().isEmpty()) {
+                IngredientResolver.IngredientQuantity missing = plan.missingIngredients().get(0);
+                failure.observation("missing_item", missing.ingredientName())
+                    .observation("missing_quantity", missing.quantity());
+            }
+            result = failure.build();
             return;
         }
 
@@ -178,7 +182,10 @@ public class CraftItemAction extends BaseAction {
         ItemStack remainder = inventory.insert(resultStack);
         int added = totalProduced - (remainder.isEmpty() ? 0 : remainder.getCount());
         int actuallyProduced = added;
-        crafted += actuallyProduced;
+        if (step.resultItem().equalsIgnoreCase(itemName)
+                || step.resultItem().equalsIgnoreCase(normalize(itemName))) {
+            crafted += actuallyProduced;
+        }
         currentStepIndex++;
 
         if (!remainder.isEmpty()) {

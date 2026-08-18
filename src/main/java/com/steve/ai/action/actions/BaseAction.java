@@ -33,7 +33,7 @@ public abstract class BaseAction {
     public void cancel() {
         if (cancelled) return;
         cancelled = true;
-        result = ActionResult.failure("Action cancelled");
+        result = ActionResult.failure(ActionResult.ERROR_CANCELLED, "Action cancelled").build();
         try {
             onCancel();
         } finally {

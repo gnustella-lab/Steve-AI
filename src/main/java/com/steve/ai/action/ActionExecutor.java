@@ -16,6 +16,7 @@ import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.plugin.ActionRegistry;
 import com.steve.ai.plugin.PluginManager;
 import com.steve.ai.security.PermissionManager;
+import com.steve.ai.planning.Plan;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -59,6 +60,10 @@ public class ActionExecutor {
     private static final int MAX_RETRIES_PER_TASK = 3;
     private static final int MAX_REPLANS_PER_PLAN = 2;
 
+    // When true, AutonomyController owns recovery, replanning, and goal completion.
+    private boolean autonomyManaged;
+    private ActionCompletion completedAction;
+
     // Plugin architecture components
     private final ActionContext actionContext;
     private final InterceptorChain interceptorChain;
@@ -77,6 +82,8 @@ public class ActionExecutor {
         this.currentTaskAttempts = 0;
         this.planReplanCount = 0;
         this.recoveryDelayTicks = 0;
+        this.autonomyManaged = false;
+        this.completedAction = null;
 
         // Initialize plugin architecture components
         this.eventBus = new SimpleEventBus();
@@ -104,6 +111,62 @@ public class ActionExecutor {
             steve.getSteveName());
     }
     
+    /** Immutable completion event consumed by the executive on the server tick. */
+    public record ActionCompletion(Task task, ActionResult result, String description) { }
+
+    /** Hands a bounded plan horizon to the runtime without transferring cognitive ownership to it. */
+    public void acceptAutonomousPlan(Plan plan) {
+        if (plan == null) return;
+        autonomyManaged = true;
+        if (currentAction != null) cancelCurrentAction();
+        taskQueue.clear();
+        completedAction = null;
+        for (Task task : plan.getTasks()) {
+            if (task != null) taskQueue.offer(task);
+        }
+        currentGoal = plan.getSummary() == null ? plan.getOriginalCommand() : plan.getSummary();
+        if (stateMachine.getCurrentState() == AgentState.PLANNING) {
+            stateMachine.transitionTo(AgentState.EXECUTING, "autonomous horizon accepted");
+        }
+    }
+
+    public boolean isAutonomyManaged() {
+        return autonomyManaged;
+    }
+
+    public ActionCompletion consumeCompletedAction() {
+        ActionCompletion completion = completedAction;
+        completedAction = null;
+        return completion;
+    }
+
+    public String getCurrentActionDescription() {
+        return currentAction == null ? "" : currentAction.getDescription();
+    }
+
+    public boolean hasPendingAutonomousTasks() {
+        return autonomyManaged && (currentAction != null || !taskQueue.isEmpty());
+    }
+
+    /** Cancels transient runtime state without cancelling the persisted goal itself. */
+    public void stopAutonomousExecution() {
+        if (planningFuture != null) planningFuture.cancel(true);
+        planningFuture = null;
+        isPlanning = false;
+        pendingCommand = null;
+        cancelCurrentAction();
+        taskQueue.clear();
+        completedAction = null;
+        autonomyManaged = false;
+        currentGoal = null;
+        currentTaskAttempts = 0;
+        recoveryDelayTicks = 0;
+    }
+
+    private void publishCompletion(Task task, ActionResult result, String description) {
+        completedAction = new ActionCompletion(task, result, description);
+    }
+
     private TaskPlanner getTaskPlanner() {
         if (taskPlanner == null) {
             SteveMod.LOGGER.info("Initializing TaskPlanner for Steve '{}'", steve.getSteveName());
@@ -148,6 +211,8 @@ public class ActionExecutor {
         }
 
         controllingPlayerUuid = controllerUuid;
+        autonomyManaged = false;
+        completedAction = null;
 
         // A newer command supersedes any plan still in flight.
         if (isPlanning) {
@@ -307,15 +372,38 @@ public class ActionExecutor {
 
         if (currentAction != null) {
             BaseAction action = currentAction;
+            Task actionTask = action.getTask();
+            if (actionTask != null
+                    && !PermissionManager.getInstance().canExecute(
+                        steve.getUUID(), steve.getSteveName(), actionTask.getAction())) {
+                String description = action.getDescription();
+                cancelCurrentAction();
+                ActionResult denied = ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
+                    "Permission revoked while action was running").build();
+                if (autonomyManaged) {
+                    publishCompletion(actionTask, denied, description);
+                } else {
+                    taskQueue.clear();
+                    clearCurrentGoal();
+                    failAndResetState("permission revoked");
+                }
+                return;
+            }
             try {
                 if (action.isComplete()) {
                     ActionResult result = action.getResult();
                     SteveMod.LOGGER.info("Steve '{}' - Action completed: {} (Success: {})",
                         steve.getSteveName(), result.getMessage(), result.isSuccess());
-
-                    steve.getMemory().addAction(action.getDescription());
                     interceptorChain.executeAfterAction(action, result, actionContext);
 
+                    if (autonomyManaged) {
+                        publishCompletion(action.getTask(), result, action.getDescription());
+                        currentAction = null;
+                        currentTaskAttempts = 0;
+                        return;
+                    }
+
+                    steve.getMemory().addAction(action.getDescription());
                     if (result.isSuccess()) {
                         // Success: reset attempts, move on
                         currentAction = null;
@@ -436,7 +524,7 @@ public class ActionExecutor {
         }
         
         // When completely idle (no tasks, no goal), follow nearest player
-        if (taskQueue.isEmpty() && currentAction == null && currentGoal == null) {
+        if (!autonomyManaged && taskQueue.isEmpty() && currentAction == null && currentGoal == null) {
             try {
                 if (idleFollowAction == null || idleFollowAction.isComplete()) {
                     idleFollowAction = new IdleFollowAction(steve);
@@ -460,6 +548,14 @@ public class ActionExecutor {
     private void executeTask(Task task) {
         if (!TaskValidator.isValid(task)) {
             SteveMod.LOGGER.warn("Steve '{}' rejected invalid task: {}", steve.getSteveName(), task);
+            if (autonomyManaged) {
+                publishCompletion(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                    "Invalid autonomous task").build(), String.valueOf(task));
+            } else {
+                taskQueue.clear();
+                failAndResetState("invalid task");
+                clearCurrentGoal();
+            }
             sendToGUI(steve.getSteveName(), "I rejected an invalid action from the AI plan.");
             return;
         }
@@ -471,6 +567,14 @@ public class ActionExecutor {
         if (!permManager.canExecute(steve.getUUID(), steve.getSteveName(), actionType)) {
             SteveMod.LOGGER.warn("Steve '{}' lacks permission for action '{}', skipping task",
                 steve.getSteveName(), actionType);
+            if (autonomyManaged) {
+                publishCompletion(task, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
+                    "Permission denied for autonomous action").build(), task.toString());
+            } else {
+                taskQueue.clear();
+                failAndResetState("permission denied");
+                clearCurrentGoal();
+            }
             sendToGUI(steve.getSteveName(), "I don't have permission to " + actionType + ".");
             return;
         }
@@ -482,12 +586,26 @@ public class ActionExecutor {
         
         if (currentAction == null) {
             SteveMod.LOGGER.error("FAILED to create action for task: {}", task);
+            if (autonomyManaged) {
+                publishCompletion(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                    "No registered action factory").requiresReplanning(true).build(), task.toString());
+            } else {
+                taskQueue.clear();
+                failAndResetState("action factory unavailable");
+                clearCurrentGoal();
+            }
             return;
         }
 
         SteveMod.LOGGER.info("Created action: {} - starting now...", currentAction.getClass().getSimpleName());
         if (!interceptorChain.executeBeforeAction(currentAction, actionContext)) {
+            Task rejectedTask = currentAction.getTask();
+            String rejectedDescription = currentAction.getDescription();
             cancelCurrentAction();
+            if (autonomyManaged) {
+                publishCompletion(rejectedTask, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
+                    "Safety interceptor rejected the action").build(), rejectedDescription);
+            }
             sendToGUI(steve.getSteveName(), "Action was rejected by a safety interceptor.");
             return;
         }
@@ -594,7 +712,12 @@ public class ActionExecutor {
     }
 
     public void shutdown() {
-        stopCurrentAction();
+        if (steve.getMemory().getActiveGoal() != null
+                && !steve.getMemory().getActiveGoal().isTerminal()) {
+            stopAutonomousExecution();
+        } else {
+            stopCurrentAction();
+        }
         eventBus.shutdown();
     }
 
@@ -637,6 +760,23 @@ public class ActionExecutor {
 
     private void handleActionException(String phase, Throwable error) {
         SteveMod.LOGGER.error("Steve '{}' failed while {}", steve.getSteveName(), phase, error);
+        if (autonomyManaged && currentAction != null) {
+            Task failedTask = currentAction.getTask();
+            String description = currentAction.getDescription();
+            ActionResult failure = ActionResult.failure(ActionResult.ERROR_UNKNOWN,
+                "Action exception: " + error.getClass().getSimpleName())
+                .retryable(true).requiresReplanning(true).build();
+            interceptorChain.executeOnError(currentAction,
+                error instanceof Exception exception ? exception : new RuntimeException(error), actionContext);
+            try {
+                currentAction.cancel();
+            } catch (Throwable cancelError) {
+                error.addSuppressed(cancelError);
+            }
+            currentAction = null;
+            publishCompletion(failedTask, failure, description);
+            return;
+        }
         if (currentAction != null) {
             Exception interceptorError = error instanceof Exception exception
                 ? exception

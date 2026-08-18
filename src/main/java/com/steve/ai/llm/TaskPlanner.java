@@ -15,7 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-public class TaskPlanner {
+public class TaskPlanner implements AutonomyPlanner {
     // Legacy synchronous clients (for backward compatibility)
     private final OpenAIClient openAIClient;
     private final GeminiClient geminiClient;
@@ -54,15 +54,59 @@ public class TaskPlanner {
         AsyncLLMClient baseGemini = new AsyncGeminiClient(geminiApiKey, geminiModel, maxTokens, temperature);
 
         // Wrap with resilience patterns
-        this.asyncOpenAIClient = new ResilientLLMClient(baseOpenAI, llmCache, fallbackHandler);
-        this.asyncGroqClient = new ResilientLLMClient(baseGroq, llmCache, fallbackHandler);
-        this.asyncGeminiClient = new ResilientLLMClient(baseGemini, llmCache, fallbackHandler);
+        this.asyncOpenAIClient = new ResilientLLMClient(baseOpenAI, llmCache, fallbackHandler,
+            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
+        this.asyncGroqClient = new ResilientLLMClient(baseGroq, llmCache, fallbackHandler,
+            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
+        this.asyncGeminiClient = new ResilientLLMClient(baseGemini, llmCache, fallbackHandler,
+            response -> ResponseParser.parseAIResponse(response.getContent()) != null);
 
         SteveMod.LOGGER.info("TaskPlanner initialized with async resilient clients " +
             "(providers: openai={}, groq={}, gemini={})",
             baseOpenAI.isHealthy() ? "configured" : "unconfigured",
             baseGroq.isHealthy() ? "configured" : "unconfigured",
             baseGemini.isHealthy() ? "configured" : "unconfigured");
+    }
+
+    @Override
+    public CompletableFuture<ResponseParser.ParsedResponse> plan(PlanningContext context) {
+        if (context == null || context.getPrimaryGoal() == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        try {
+            String systemPrompt = PromptBuilder.buildSystemPrompt(context.getMaxPlanHorizon());
+            String userPrompt = PromptBuilder.buildPlanningPrompt(context);
+            String provider = SteveConfig.AI_PROVIDER.get().toLowerCase(Locale.ROOT);
+            String modelForProvider = switch (provider) {
+                case "openai" -> SteveConfig.OPENAI_MODEL.get();
+                case "gemini" -> SteveConfig.GEMINI_MODEL.get();
+                case "groq" -> SteveConfig.GROQ_MODEL.get();
+                default -> SteveConfig.GROQ_MODEL.get();
+            };
+            Map<String, Object> params = Map.of(
+                "systemPrompt", systemPrompt,
+                "fallbackPrompt", context.getPrimaryGoal().getDescription(),
+                "model", modelForProvider,
+                "maxTokens", SteveConfig.MAX_TOKENS.get(),
+                "temperature", SteveConfig.TEMPERATURE.get(),
+                "goalId", context.getPrimaryGoal().getId().toString(),
+                "horizon", context.getMaxPlanHorizon(),
+                "observation", context.getObservation() == null ? "none" : context.getObservation().toPromptContext()
+            );
+            return getAsyncClient(provider).sendAsync(userPrompt, params)
+                .thenApply(response -> {
+                    if (response == null || response.getContent() == null) return null;
+                    return ResponseParser.parseAIResponse(response.getContent(), context.getMaxPlanHorizon());
+                })
+                .exceptionally(throwable -> {
+                    SteveMod.LOGGER.warn("Autonomous planning failed for goal {}: {}",
+                        context.getPrimaryGoal().getId(), throwable.getClass().getSimpleName());
+                    return null;
+                });
+        } catch (RuntimeException exception) {
+            SteveMod.LOGGER.warn("Autonomous planning setup failed: {}", exception.getClass().getSimpleName());
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public ResponseParser.ParsedResponse planTasks(SteveEntity steve, String command) {

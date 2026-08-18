@@ -3,9 +3,12 @@ package com.steve.ai.gametest;
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.Task;
 import com.steve.ai.action.actions.MineBlockAction;
+import com.steve.ai.autonomy.AutonomyController;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.entity.SteveManager;
+import com.steve.ai.llm.ResponseParser;
 import com.steve.ai.plugin.ActionRegistry;
+import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -21,6 +24,8 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @GameTestHolder(SteveMod.MODID)
 @PrefixGameTestTemplate(false)
@@ -234,10 +239,13 @@ public final class SteveGameTests {
         tickUntilComplete(helper, craftAction, () -> {
             helper.assertTrue(
                 craftAction.getResult() != null && craftAction.getResult().isSuccess(),
-                "Crafting should succeed when ingredients are available");
+                "Crafting should succeed when ingredients are available: "
+                    + (craftAction.getResult() == null ? "no result" : craftAction.getResult().toString()));
             helper.assertTrue(
                 steve.getSteveInventory().count(Items.OAK_PLANKS) >= 8,
-                "Crafting should produce at least eight oak planks");
+                "Crafting should produce at least eight oak planks, found "
+                    + steve.getSteveInventory().count(Items.OAK_PLANKS)
+                    + " result=" + craftAction.getResult());
             helper.assertTrue(
                 steve.getSteveInventory().count(Items.OAK_LOG) == 2,
                 "Crafting should consume exactly two oak logs");
@@ -271,7 +279,8 @@ public final class SteveGameTests {
         tickUntilComplete(helper, smeltAction, () -> {
             helper.assertTrue(
                 steve.getSteveInventory().count(Items.IRON_INGOT) >= 2,
-                "Smelting should produce two iron ingots in the Steve inventory");
+                "Smelting should produce two iron ingots in the Steve inventory: "
+                    + (smeltAction.getResult() == null ? "no result" : smeltAction.getResult().toString()));
             helper.assertTrue(
                 steve.getSteveInventory().count(Items.RAW_IRON) == 0,
                 "Smelting should consume the raw iron inputs");
@@ -338,6 +347,87 @@ public final class SteveGameTests {
         helper.assertTrue(equipped.getDamageValue() > initialDamage,
             "Pickaxe should have worn at least one durability point");
         helper.succeed();
+    }
+
+    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 700)
+    public static void autonomousIronGoalSmeltsAndVerifiesInventory(GameTestHelper helper) {
+        BlockPos relativeFurnace = new BlockPos(1, 1, 1);
+        BlockPos furnacePos = helper.absolutePos(relativeFurnace);
+        helper.setBlock(relativeFurnace, Blocks.FURNACE);
+        if (!(helper.getLevel().getBlockEntity(furnacePos)
+                instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace)) {
+            helper.fail("Furnace block entity did not spawn");
+            return;
+        }
+        furnace.setItem(1, new ItemStack(Items.COAL, 16));
+
+        SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
+        steve.setSteveName("AutonomousIronGoal");
+        steve.moveTo(furnacePos.above(), 0.0F, 0.0F);
+        steve.setPersistenceRequired();
+        steve.getSteveInventory().insert(new ItemStack(Items.IRON_INGOT, 15));
+        steve.getSteveInventory().insert(new ItemStack(Items.RAW_IRON, 1));
+        helper.getLevel().addFreshEntity(steve);
+
+        AtomicInteger plannerCalls = new AtomicInteger();
+        AutonomyController controller = steve.getAutonomyController();
+        controller.setPlanner(context -> {
+            plannerCalls.incrementAndGet();
+            String response = "{\"decision\":\"act\",\"summary\":\"Smelt the available iron\","
+                + "\"goalStatus\":\"in_progress\",\"tasks\":[{\"action\":\"smelt\",\"parameters\":{"
+                + "\"item\":\"iron_ingot\",\"quantity\":1}}]}";
+            return CompletableFuture.completedFuture(ResponseParser.parseAIResponse(response));
+        });
+        controller.submitUserGoal("Get me 16 iron ingots", null);
+
+        helper.runAfterDelay(500, () -> {
+            helper.assertTrue(plannerCalls.get() >= 1,
+                "The persistent goal should invoke the injected planner");
+            helper.assertTrue(steve.getSteveInventory().count(Items.IRON_INGOT) >= 16,
+                "The autonomous goal should verify sixteen iron ingots");
+            helper.assertTrue(controller.getActiveGoal() == null,
+                "The verified iron goal should return to idle");
+            helper.succeed();
+        });
+    }
+
+    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 240)
+    public static void autonomousControllerReplansAfterProtectedAction(GameTestHelper helper) {
+        BlockPos relativeTarget = new BlockPos(2, 1, 1);
+        BlockPos target = helper.absolutePos(relativeTarget);
+        helper.setBlock(relativeTarget, Blocks.AIR.defaultBlockState());
+        PermissionManager.getInstance().protectRegion(helper.getLevel(), target, target);
+
+        SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
+        steve.setSteveName("AutonomyRecovery");
+        steve.moveTo(target.above(), 0.0F, 0.0F);
+        steve.setPersistenceRequired();
+        helper.getLevel().addFreshEntity(steve);
+
+        AtomicInteger plannerCalls = new AtomicInteger();
+        AutonomyController controller = steve.getAutonomyController();
+        controller.setPlanner(context -> {
+            int call = plannerCalls.getAndIncrement();
+            String response = call == 0
+                ? "{\"decision\":\"act\",\"summary\":\"Try protected placement\","
+                    + "\"goalStatus\":\"in_progress\",\"tasks\":[{\"action\":\"place\",\"parameters\":{"
+                    + "\"block\":\"stone\",\"x\":" + target.getX() + ",\"y\":" + target.getY()
+                    + ",\"z\":" + target.getZ() + "}}]}"
+                : "{\"decision\":\"act\",\"summary\":\"Verify after replanning\","
+                    + "\"goalStatus\":\"in_progress\",\"tasks\":[{\"action\":\"inspect_inventory\",\"parameters\":{}}]}";
+            return CompletableFuture.completedFuture(ResponseParser.parseAIResponse(response));
+        });
+        controller.submitUserGoal("Complete autonomous recovery probe", null);
+
+        helper.runAfterDelay(180, () -> {
+            helper.assertTrue(plannerCalls.get() >= 2,
+                "Autonomy should request a second horizon after protected failure");
+            helper.assertTrue(controller.getActiveGoal() == null,
+                "Autonomy should verify the goal after the replacement horizon");
+            helper.assertTrue(helper.getLevel().getBlockState(target).isAir(),
+                "Protected placement must never mutate the protected block");
+            helper.succeed();
+        });
     }
 
     /**

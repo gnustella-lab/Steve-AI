@@ -23,10 +23,24 @@ public class ResponseParser {
     private static final int MAX_TASKS = 64;
     private static final int MAX_PARAMETERS = 32;
     private static final int MAX_PARAMETER_STRING_LENGTH = 512;
-    private static final Set<String> TOP_LEVEL_FIELDS = Set.of("summary", "tasks", "plan", "reasoning");
+    private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
+        "decision", "goalStatus", "summary", "tasks", "plan", "reasoning");
     private static final Set<String> TASK_FIELDS = Set.of("action", "parameters");
+    private static final Set<String> GOAL_STATUSES = Set.of("in_progress", "complete", "blocked", "paused", "failed");
+
+    public enum Decision {
+        ACT,
+        COMPLETE,
+        BLOCKED,
+        ASK_USER
+    }
     
     public static ParsedResponse parseAIResponse(String response) {
+        return parseAIResponse(response, MAX_TASKS);
+    }
+
+    /** Parses a response while applying the caller's receding-horizon task limit. */
+    public static ParsedResponse parseAIResponse(String response, int maxTasks) {
         if (response == null || response.isBlank() || response.length() > MAX_RESPONSE_LENGTH) {
             return null;
         }
@@ -43,6 +57,18 @@ public class ResponseParser {
                 return null;
             }
 
+            Decision decision = json.has("decision")
+                ? parseDecision(readBoundedString(json.get("decision"), 32)) : Decision.ACT;
+            if (decision == null) {
+                return null;
+            }
+            String goalStatus = json.has("goalStatus")
+                ? readBoundedString(json.get("goalStatus"), 32).toLowerCase(Locale.ROOT)
+                : "in_progress";
+            if (!GOAL_STATUSES.contains(goalStatus)) {
+                return null;
+            }
+
             String summary = json.has("summary")
                 ? readBoundedString(json.get("summary"), MAX_SUMMARY_LENGTH)
                 : readOptionalBoundedString(json, "plan", MAX_SUMMARY_LENGTH);
@@ -53,7 +79,7 @@ public class ResponseParser {
                 return null;
             }
             JsonArray tasksArray = json.getAsJsonArray("tasks");
-            if (tasksArray.size() > MAX_TASKS) {
+            if (tasksArray.size() > Math.max(0, Math.min(MAX_TASKS, maxTasks))) {
                 return null;
             }
             for (JsonElement taskElement : tasksArray) {
@@ -67,11 +93,20 @@ public class ResponseParser {
                 tasks.add(task);
             }
 
-            return new ParsedResponse(summary, legacyReasoning, tasks);
+            return new ParsedResponse(decision, goalStatus, summary, legacyReasoning, tasks);
             
         } catch (Exception e) {
             LOGGER.warn("Failed to parse AI response ({} characters): {}",
                 response.length(), e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private static Decision parseDecision(String value) {
+        if (value == null) return null;
+        try {
+            return Decision.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
             return null;
         }
     }
@@ -211,14 +246,27 @@ public class ResponseParser {
     }
 
     public static class ParsedResponse {
+        private final Decision decision;
+        private final String goalStatus;
         private final String summary;
         private final String legacyReasoning;
         private final List<Task> tasks;
 
-        private ParsedResponse(String summary, String legacyReasoning, List<Task> tasks) {
+        private ParsedResponse(Decision decision, String goalStatus, String summary,
+                String legacyReasoning, List<Task> tasks) {
+            this.decision = decision;
+            this.goalStatus = goalStatus;
             this.summary = summary;
             this.legacyReasoning = legacyReasoning;
             this.tasks = List.copyOf(tasks);
+        }
+
+        public Decision getDecision() {
+            return decision;
+        }
+
+        public String getGoalStatus() {
+            return goalStatus;
         }
 
         public String getSummary() {

@@ -24,6 +24,7 @@ public final class ActionResult {
     public static final String ERROR_PLAYER_OFFLINE = "player_offline";
     public static final String ERROR_CHUNK_UNLOADED = "chunk_unloaded";
     public static final String ERROR_VALIDATION = "validation";
+    public static final String ERROR_PERMISSION_DENIED = "permission_denied";
     public static final String ERROR_LLM_INVALID = "llm_invalid";
     public static final String ERROR_TIMEOUT = "timeout";
     public static final String ERROR_CANCELLED = "cancelled";

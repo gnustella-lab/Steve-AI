@@ -39,9 +39,9 @@ public class SteveAPI {
      */
     public void move(double x, double y, double z) {
         Map<String, Object> params = new HashMap<>();
-        params.put("x", x);
-        params.put("y", y);
-        params.put("z", z);
+        params.put("x", (int) Math.round(x));
+        params.put("y", (int) Math.round(y));
+        params.put("z", (int) Math.round(z));
         actionQueue.add(new Task("pathfind", params));
     }
 
@@ -58,11 +58,9 @@ public class SteveAPI {
         Map<String, Object> params = new HashMap<>();
         params.put("structure", structureType.toLowerCase());
 
-        // Add position if provided
+        // A build descriptor has no arbitrary coordinate fields. Navigate first, then build.
         if (position != null && position.containsKey("x") && position.containsKey("y") && position.containsKey("z")) {
-            params.put("x", position.get("x").intValue());
-            params.put("y", position.get("y").intValue());
-            params.put("z", position.get("z").intValue());
+            move(position.get("x"), position.get("y"), position.get("z"));
         }
 
         actionQueue.add(new Task("build", params));
@@ -91,8 +89,8 @@ public class SteveAPI {
         }
 
         Map<String, Object> params = new HashMap<>();
-        params.put("blockType", blockType.toLowerCase());
-        params.put("count", count);
+        params.put("block", blockType.toLowerCase());
+        params.put("quantity", count);
 
         actionQueue.add(new Task("mine", params));
     }
@@ -128,7 +126,7 @@ public class SteveAPI {
 
         Map<String, Object> params = new HashMap<>();
         params.put("item", itemName.toLowerCase());
-        params.put("count", count);
+        params.put("quantity", count);
 
         actionQueue.add(new Task("craft", params));
     }
@@ -177,7 +175,7 @@ public class SteveAPI {
         }
 
         Map<String, Object> params = new HashMap<>();
-        params.put("playerName", playerName);
+        params.put("player", playerName);
 
         actionQueue.add(new Task("follow", params));
     }
@@ -198,7 +196,7 @@ public class SteveAPI {
 
         Map<String, Object> params = new HashMap<>();
         params.put("resource", resourceType.toLowerCase());
-        params.put("count", count);
+        params.put("quantity", count);
 
         actionQueue.add(new Task("gather", params));
     }

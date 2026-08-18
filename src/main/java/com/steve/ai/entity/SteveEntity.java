@@ -2,6 +2,7 @@ package com.steve.ai.entity;
 
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.ActionExecutor;
+import com.steve.ai.autonomy.AutonomyController;
 import com.steve.ai.config.SteveConfig;
 import com.steve.ai.inventory.SteveInventory;
 import com.steve.ai.memory.SteveMemory;
@@ -43,6 +44,7 @@ public class SteveEntity extends PathfinderMob {
     private final SteveInventory inventory;
     private final SteveAccessProfile accessProfile;
     private ActionExecutor actionExecutor;
+    private AutonomyController autonomyController;
     private int tickCounter = 0;
     private boolean isFlying = false;
     private boolean isInvulnerable = false;
@@ -53,6 +55,7 @@ public class SteveEntity extends PathfinderMob {
         this.inventory = new SteveInventory(SteveConfig.INVENTORY_SLOTS.get());
         this.accessProfile = new SteveAccessProfile();
         this.actionExecutor = null;
+        this.autonomyController = null;
         this.setCustomNameVisible(true);
         this.setCanPickUpLoot(true);
         
@@ -91,6 +94,7 @@ public class SteveEntity extends PathfinderMob {
                 syncEquipmentToInventory();
             }
             getActionExecutor().tick();
+            getAutonomyController().tick();
         }
     }
 
@@ -163,6 +167,14 @@ public class SteveEntity extends PathfinderMob {
             this.actionExecutor = new ActionExecutor(this);
         }
         return this.actionExecutor;
+    }
+
+    /** Returns the persistent goal-driven executive for this entity. */
+    public AutonomyController getAutonomyController() {
+        if (this.autonomyController == null) {
+            this.autonomyController = new AutonomyController(this, getActionExecutor());
+        }
+        return this.autonomyController;
     }
 
     /**
@@ -340,6 +352,9 @@ public class SteveEntity extends PathfinderMob {
 
     @Override
     public void remove(RemovalReason reason) {
+        if (autonomyController != null) {
+            autonomyController.shutdown();
+        }
         if (actionExecutor != null) {
             actionExecutor.shutdown();
         }

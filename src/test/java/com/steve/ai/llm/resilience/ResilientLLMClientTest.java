@@ -80,6 +80,24 @@ class ResilientLLMClientTest {
             result.getContent().contains("\"action\":\"build\""));
     }
 
+    @Test
+    void malformedOperationalResponsesAreNotCachedWhenValidatorRejectsThem() {
+        AtomicInteger calls = new AtomicInteger();
+        AsyncLLMClient delegate = new FakeClient(params -> {
+            calls.incrementAndGet();
+            return CompletableFuture.completedFuture(response("not-json"));
+        });
+        LLMCache cache = new LLMCache();
+        ResilientLLMClient client = new ResilientLLMClient(
+            delegate, cache, new LLMFallbackHandler(), value -> value.getContent().startsWith("{"));
+
+        client.sendAsync("same", params("system")).join();
+        client.sendAsync("same", params("system")).join();
+
+        assertEquals(2, calls.get());
+        assertEquals(0, cache.size());
+    }
+
     private static Map<String, Object> params(String systemPrompt) {
         return Map.of(
             "model", "fake-model",

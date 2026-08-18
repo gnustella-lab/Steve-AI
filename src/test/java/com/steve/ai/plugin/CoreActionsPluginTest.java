@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CoreActionsPluginTest {
     private static final Set<String> CORE_ACTIONS = Set.of(
-        "pathfind", "mine", "gather", "place", "build", "attack", "follow",
+        "pathfind", "mine", "gather", "search_resource", "place", "build", "attack", "follow",
         "pickup_item", "give_item", "deposit_item", "withdraw_item",
         "equip_item", "unequip_item", "drop_item", "consume_item",
         "inspect_inventory", "craft", "smelt");

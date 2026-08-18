@@ -8,6 +8,8 @@ import net.minecraft.core.BlockPos;
 public class PathfindAction extends BaseAction {
     private BlockPos targetPos;
     private int ticksRunning;
+    private int ticksWithoutProgress;
+    private double lastDistance;
     private static final int MAX_TICKS = 600; // 30 seconds timeout
 
     public PathfindAction(SteveEntity steve, Task task) {
@@ -22,6 +24,8 @@ public class PathfindAction extends BaseAction {
         
         targetPos = new BlockPos(x, y, z);
         ticksRunning = 0;
+        ticksWithoutProgress = 0;
+        lastDistance = Double.MAX_VALUE;
         
         steve.getNavigation().moveTo(x, y, z, 1.0);
     }
@@ -34,10 +38,28 @@ public class PathfindAction extends BaseAction {
             result = ActionResult.success("Reached target position").build();
             return;
         }
+
+        double distance = steve.distanceToSqr(targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5);
+        if (distance >= lastDistance - 0.01) {
+            ticksWithoutProgress++;
+        } else {
+            ticksWithoutProgress = 0;
+        }
+        lastDistance = distance;
         
         if (ticksRunning > MAX_TICKS) {
             steve.getNavigation().stop();
-            result = ActionResult.failure("Pathfinding timeout");
+            result = ActionResult.failure(ActionResult.ERROR_PATHING, "Pathfinding timeout")
+                .retryable(true).requiresReplanning(true)
+                .observation("target", targetPos.toShortString()).build();
+            return;
+        }
+
+        if (ticksWithoutProgress >= 40) {
+            steve.getNavigation().stop();
+            result = ActionResult.failure(ActionResult.ERROR_PATHING, "Pathfinding made no progress")
+                .retryable(true).requiresReplanning(true)
+                .observation("target", targetPos.toShortString()).build();
             return;
         }
         

@@ -97,6 +97,8 @@ public class SteveMod {
         StructureRegistry.clear();
         CollaborativeBuildManager.clearAllBuilds();
         PermissionManager.getInstance().clear();
+        PluginManager.getInstance().unloadPlugins();
+        ActionRegistry.getInstance().clear();
     }
 
     public static SteveManager getSteveManager() {

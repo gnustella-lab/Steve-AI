@@ -85,7 +85,7 @@ public class CraftingPlanner {
         Map<String, Recipe<?>> recipeMap = new HashMap<>();
 
         // Collect all recipes that could be involved
-        collectRelevantRecipes(level, targetItem, graph, recipeMap, new java.util.HashSet<>());
+        collectRelevantRecipes(level, targetItem, graph, recipeMap, new java.util.HashSet<>(), inventory);
 
         // Build the plan
         List<CraftStep> steps = new ArrayList<>();
@@ -111,7 +111,8 @@ public class CraftingPlanner {
                 if (!resolution.fullySatisfied()) {
                     for (var entry : resolution.deficit().entrySet()) {
                         IngredientResolver.IngredientQuantity iq = entry.getKey() != null
-                            ? new IngredientResolver.IngredientQuantity(entry.getKey(), entry.getValue())
+                            ? new IngredientResolver.IngredientQuantity(entry.getKey(),
+                                resolveIngredientName(entry.getKey()), entry.getValue())
                             : null;
                         boolean producedByPlan = false;
                         if (iq != null && iq.ingredient() != null) {
@@ -184,7 +185,8 @@ public class CraftingPlanner {
             String targetItem,
             RecipeDependencyGraph graph,
             Map<String, Recipe<?>> recipeMap,
-            java.util.Set<String> visited) {
+            java.util.Set<String> visited,
+            SteveInventory inventory) {
 
         if (visited.contains(targetItem)) return;
         visited.add(targetItem);
@@ -213,20 +215,43 @@ public class CraftingPlanner {
 
         // Recursively collect recipes for ingredients
         for (var ingredient : recipe.getIngredients()) {
-            if (ingredient.isEmpty()) continue;
+            if (ingredient.isEmpty() || hasMatchingIngredient(inventory, ingredient)) continue;
             for (var item : ingredient.getItems()) {
                 String itemName = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
                     item.getItem()).toString();
-                collectRelevantRecipes(level, itemName, graph, recipeMap, visited);
+                if (findRecipeForItem(level, itemName) != null) {
+                    collectRelevantRecipes(level, itemName, graph, recipeMap, visited, inventory);
+                    break;
+                }
             }
         }
     }
 
+    private static boolean hasMatchingIngredient(SteveInventory inventory,
+            net.minecraft.world.item.crafting.Ingredient ingredient) {
+        if (inventory == null || ingredient == null || ingredient.isEmpty()) return false;
+        return inventory.getContents().stream().anyMatch(ingredient::test);
+    }
+
+    private static String resolveIngredientName(net.minecraft.world.item.crafting.Ingredient ingredient) {
+        if (ingredient == null || ingredient.isEmpty()) return "unknown";
+        ItemStack[] items = ingredient.getItems();
+        if (items.length == 0) return "unknown";
+        ResourceLocation key = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        return key == null ? "unknown" : key.toString();
+    }
+
     private static int calculateTimesToCraft(RecipeDependencyGraph.Node node,
             String targetItem, int targetQuantity) {
-        if (node.resultItem().equals(targetItem)) {
+        if (normalizeItemId(node.resultItem()).equals(normalizeItemId(targetItem))) {
             return (int) Math.ceil((double) targetQuantity / node.resultCount());
         }
         return 1;
+    }
+
+    private static String normalizeItemId(String itemName) {
+        if (itemName == null) return "";
+        String normalized = itemName.toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+        return normalized.contains(":") ? normalized : "minecraft:" + normalized;
     }
 }

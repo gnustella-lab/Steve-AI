@@ -33,12 +33,24 @@ public class SteveCommands {
             .then(Commands.literal("stop")
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::stopSteve)))
+            .then(Commands.literal("pause")
+                .then(Commands.argument("name", StringArgumentType.string())
+                    .executes(SteveCommands::pauseSteve)))
+            .then(Commands.literal("resume")
+                .then(Commands.argument("name", StringArgumentType.string())
+                    .executes(SteveCommands::resumeSteve)))
             .then(Commands.literal("tell")
                 .then(Commands.argument("name", StringArgumentType.string())
                     .then(Commands.argument("command", StringArgumentType.greedyString())
                         .executes(SteveCommands::tellSteve))))
+            .then(Commands.literal("goal")
+                .then(Commands.argument("name", StringArgumentType.string())
+                    .then(Commands.argument("command", StringArgumentType.greedyString())
+                        .executes(SteveCommands::tellSteve))))
             .then(Commands.literal("status")
-                .executes(SteveCommands::showStatus))
+                .executes(SteveCommands::showStatus)
+                .then(Commands.argument("name", StringArgumentType.string())
+                    .executes(SteveCommands::showSteveStatus)))
         );
     }
 
@@ -172,14 +184,33 @@ public class SteveCommands {
             if (!canControl(source, steve)) {
                 return 0;
             }
-            steve.getActionExecutor().stopCurrentAction();
-            steve.getMemory().clearTaskQueue();
+            steve.getAutonomyController().stop();
             source.sendSuccess(() -> Component.literal("Stopped Steve: " + name), false);
             return 1;
         } else {
             source.sendFailure(Component.literal("Steve not found: " + name));
             return 0;
         }
+    }
+
+    private static int pauseSteve(CommandContext<CommandSourceStack> context) {
+        String name = StringArgumentType.getString(context, "name");
+        CommandSourceStack source = context.getSource();
+        SteveEntity steve = SteveMod.getSteveManager().getSteve(name);
+        if (steve == null || !canControl(source, steve)) return 0;
+        steve.getAutonomyController().pause();
+        source.sendSuccess(() -> Component.literal("Paused Steve: " + name), false);
+        return 1;
+    }
+
+    private static int resumeSteve(CommandContext<CommandSourceStack> context) {
+        String name = StringArgumentType.getString(context, "name");
+        CommandSourceStack source = context.getSource();
+        SteveEntity steve = SteveMod.getSteveManager().getSteve(name);
+        if (steve == null || !canControl(source, steve)) return 0;
+        steve.getAutonomyController().resume();
+        source.sendSuccess(() -> Component.literal("Resumed Steve: " + name), false);
+        return 1;
     }
 
     private static int tellSteve(CommandContext<CommandSourceStack> context) {
@@ -194,15 +225,28 @@ public class SteveCommands {
             if (!canControl(source, steve)) {
                 return 0;
             }
-            // O comando já roda na thread do servidor. Apenas a chamada HTTP é assíncrona.
+            // The command already runs on the server thread. Only the HTTP request is asynchronous.
             UUID controllerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
-            steve.getActionExecutor().processNaturalLanguageCommand(command, controllerUuid);
+            steve.getAutonomyController().submitUserGoal(command, controllerUuid);
             
             return 1;
         } else {
             source.sendFailure(Component.literal("Steve not found: " + name));
             return 0;
         }
+    }
+
+    private static int showSteveStatus(CommandContext<CommandSourceStack> context) {
+        String name = StringArgumentType.getString(context, "name");
+        SteveEntity steve = SteveMod.getSteveManager().getSteve(name);
+        if (steve == null) {
+            context.getSource().sendFailure(Component.literal("Steve not found: " + name));
+            return 0;
+        }
+        if (!canControl(context.getSource(), steve)) return 0;
+        context.getSource().sendSuccess(() -> Component.literal(
+            "§e" + steve.getSteveName() + "§f " + steve.getAutonomyController().getStatusSummary()), false);
+        return 1;
     }
 
     private static boolean canControl(CommandSourceStack source, SteveEntity steve) {
