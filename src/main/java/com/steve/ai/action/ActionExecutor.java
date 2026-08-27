@@ -3,7 +3,7 @@ package com.steve.ai.action;
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.actions.BaseAction;
 import com.steve.ai.action.actions.IdleFollowAction;
-import com.steve.ai.action.recovery.RecoveryPolicy;
+
 import com.steve.ai.di.ServiceContainer;
 import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.event.EventBus;
@@ -45,6 +45,7 @@ public class ActionExecutor {
     private String currentGoal;
     private int ticksSinceLastAction;
     private BaseAction idleFollowAction;  // Follow player when idle
+    private ActionStart startedAction;
 
     // Async planning state. Completion is polled without blocking the server thread.
     private CompletableFuture<ResponseParser.ParsedResponse> planningFuture;
@@ -52,17 +53,18 @@ public class ActionExecutor {
     private String pendingCommand;  // Store command while planning
     private UUID controllingPlayerUuid;
 
-    // Recovery and attempt tracking
-    private final RecoveryPolicy recoveryPolicy;
-    private int currentTaskAttempts;
-    private int planReplanCount;
-    private int recoveryDelayTicks;
-    private static final int MAX_RETRIES_PER_TASK = 3;
-    private static final int MAX_REPLANS_PER_PLAN = 2;
-
-    // When true, AutonomyController owns recovery, replanning, and goal completion.
+    // When true, AutonomyController owns goals, recovery, replanning, and completion.
     private boolean autonomyManaged;
     private ActionCompletion completedAction;
+    private int commandPathAttempts;
+    private static final int MAX_COMMAND_PATH_RETRIES = 3;
+
+    /** Bounded recovery for the command path, when AutonomyController does not own the runtime. */
+    public enum CommandPathDecision {
+        RETRY,
+        SKIP,
+        ABORT
+    }
 
     // Plugin architecture components
     private final ActionContext actionContext;
@@ -76,14 +78,12 @@ public class ActionExecutor {
         this.taskQueue = new LinkedList<>();
         this.ticksSinceLastAction = 0;
         this.idleFollowAction = null;
+        this.startedAction = null;
         this.planningFuture = null;
         this.pendingCommand = null;
-        this.recoveryPolicy = new RecoveryPolicy();
-        this.currentTaskAttempts = 0;
-        this.planReplanCount = 0;
-        this.recoveryDelayTicks = 0;
         this.autonomyManaged = false;
         this.completedAction = null;
+        this.commandPathAttempts = 0;
 
         // Initialize plugin architecture components
         this.eventBus = new SimpleEventBus();
@@ -111,8 +111,22 @@ public class ActionExecutor {
             steve.getSteveName());
     }
     
+    /** Immutable start handoff consumed by the executive on the server tick. */
+    public record ActionStart(Task task, String description) {
+        public ActionStart {
+            java.util.Objects.requireNonNull(task, "task");
+            description = BoundedData.boundedString(description);
+        }
+    }
+
     /** Immutable completion event consumed by the executive on the server tick. */
-    public record ActionCompletion(Task task, ActionResult result, String description) { }
+    public record ActionCompletion(Task task, ActionResult result, String description) {
+        public ActionCompletion {
+            java.util.Objects.requireNonNull(task, "task");
+            java.util.Objects.requireNonNull(result, "result");
+            description = BoundedData.boundedString(description);
+        }
+    }
 
     /** Hands a bounded plan horizon to the runtime without transferring cognitive ownership to it. */
     public void acceptAutonomousPlan(Plan plan) {
@@ -121,6 +135,7 @@ public class ActionExecutor {
         if (currentAction != null) cancelCurrentAction();
         taskQueue.clear();
         completedAction = null;
+        startedAction = null;
         for (Task task : plan.getTasks()) {
             if (task != null) taskQueue.offer(task);
         }
@@ -140,6 +155,13 @@ public class ActionExecutor {
         return completion;
     }
 
+    /** Returns and clears the most recently accepted action start, if any. */
+    public ActionStart consumeStartedAction() {
+        ActionStart start = startedAction;
+        startedAction = null;
+        return start;
+    }
+
     public String getCurrentActionDescription() {
         return currentAction == null ? "" : currentAction.getDescription();
     }
@@ -157,10 +179,10 @@ public class ActionExecutor {
         cancelCurrentAction();
         taskQueue.clear();
         completedAction = null;
+        startedAction = null;
         autonomyManaged = false;
         currentGoal = null;
-        currentTaskAttempts = 0;
-        recoveryDelayTicks = 0;
+        commandPathAttempts = 0;
     }
 
     private void publishCompletion(Task task, ActionResult result, String description) {
@@ -213,6 +235,7 @@ public class ActionExecutor {
         controllingPlayerUuid = controllerUuid;
         autonomyManaged = false;
         completedAction = null;
+        commandPathAttempts = 0;
 
         // A newer command supersedes any plan still in flight.
         if (isPlanning) {
@@ -278,50 +301,14 @@ public class ActionExecutor {
     }
 
     /**
-     * Legacy synchronous command processing (blocking).
-     *
-     * <p><b>Warning:</b> This method blocks the game thread for 30-60 seconds during LLM calls.
-     * Use {@link #processNaturalLanguageCommand(String)} instead for non-blocking execution.</p>
+     * Legacy entry point retained for compatibility. Delegates to the non-blocking planner.
      *
      * @param command The natural language command
      * @deprecated Use {@link #processNaturalLanguageCommand(String)} instead
      */
     @Deprecated
     public void processNaturalLanguageCommandSync(String command) {
-        SteveMod.LOGGER.info("Steve '{}' processing command (SYNC - blocking!): {}", steve.getSteveName(), command);
-        controllingPlayerUuid = null;
-
-        cancelCurrentAction();
-
-        if (idleFollowAction != null) {
-            idleFollowAction.cancel();
-            idleFollowAction = null;
-        }
-
-        try {
-            stateMachine.reset();
-            stateMachine.transitionTo(AgentState.PLANNING, "synchronous command");
-            // BLOCKING CALL - freezes game for 30-60 seconds!
-            ResponseParser.ParsedResponse response = getTaskPlanner().planTasks(steve, command);
-
-            if (response == null) {
-                failAndResetState("planner returned no response");
-                sendToGUI(steve.getSteveName(), "I couldn't understand that command.");
-                return;
-            }
-
-            applyPlan(response);
-
-            if (SteveConfig.ENABLE_CHAT_RESPONSES.get() && !taskQueue.isEmpty()) {
-                sendToGUI(steve.getSteveName(), "Okay! " + currentGoal);
-            }
-        } catch (NoClassDefFoundError e) {
-            failAndResetState("AI components unavailable");
-            SteveMod.LOGGER.error("Failed to initialize AI components", e);
-            sendToGUI(steve.getSteveName(), "Sorry, I'm having trouble with my AI systems!");
-        }
-
-        SteveMod.LOGGER.info("Steve '{}' queued {} tasks", steve.getSteveName(), taskQueue.size());
+        processNaturalLanguageCommand(command);
     }
     
     /** Envia feedback pelo chat do servidor quando habilitado. */
@@ -369,12 +356,6 @@ public class ActionExecutor {
             }
         }
 
-        // Wait out any recovery delay before proceeding
-        if (recoveryDelayTicks > 0) {
-            recoveryDelayTicks--;
-            return;
-        }
-
         if (currentAction != null) {
             BaseAction action = currentAction;
             Task actionTask = action.getTask();
@@ -404,102 +385,22 @@ public class ActionExecutor {
                     if (autonomyManaged) {
                         publishCompletion(action.getTask(), result, action.getDescription());
                         currentAction = null;
-                        currentTaskAttempts = 0;
                         return;
                     }
 
                     steve.getMemory().addAction(action.getDescription());
                     if (result.isSuccess()) {
-                        // Success: reset attempts, move on
                         currentAction = null;
-                        currentTaskAttempts = 0;
+                        commandPathAttempts = 0;
                         if (taskQueue.isEmpty()) {
                             clearCurrentGoal();
-                            planReplanCount = 0;
                             if (stateMachine.getCurrentState() == AgentState.EXECUTING) {
                                 stateMachine.transitionTo(AgentState.COMPLETED, "plan finished");
                                 stateMachine.transitionTo(AgentState.IDLE, "ready");
                             }
                         }
                     } else {
-                        // Failure: consult RecoveryPolicy for deterministic recovery
-                        Task failedTask = action.getTask();
-                        String actionType = failedTask != null ? failedTask.getAction() : "unknown";
-                        int replansLeft = MAX_REPLANS_PER_PLAN - planReplanCount;
-
-                        RecoveryPolicy.RecoveryDecision decision = recoveryPolicy.decide(
-                            result, actionType, currentTaskAttempts,
-                            MAX_RETRIES_PER_TASK, replansLeft);
-
-                        SteveMod.LOGGER.info(
-                            "Steve '{}' - Recovery decision: {} (reason: {}, delay: {})",
-                            steve.getSteveName(), decision.action(), decision.reason(),
-                            decision.delayTicks());
-
-                        currentAction = null;
-                        recoveryDelayTicks = decision.delayTicks();
-
-                        switch (decision.action()) {
-                            case RETRY_SAME -> {
-                                currentTaskAttempts++;
-                                // Re-insert task at head of queue for retry
-                                if (failedTask != null) {
-                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
-                                }
-                            }
-                            case RETRY_MODIFIED -> {
-                                currentTaskAttempts++;
-                                if (failedTask != null) {
-                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
-                                }
-                                sendToGUI(steve.getSteveName(), decision.reason());
-                            }
-                            case SKIP_CONTINUE -> {
-                                currentTaskAttempts = 0;
-                                sendToGUI(steve.getSteveName(),
-                                    "Skipping: " + decision.reason());
-                                // Just continue with next task in queue
-                            }
-                            case REPLAN -> {
-                                planReplanCount++;
-                                taskQueue.clear();
-                                currentTaskAttempts = 0;
-                                if (pendingCommand != null || currentGoal != null) {
-                                    String cmd = pendingCommand != null
-                                        ? pendingCommand : currentGoal;
-                                    sendToGUI(steve.getSteveName(),
-                                        "Replanning: " + decision.reason());
-                                    processNaturalLanguageCommand(cmd,
-                                        controllingPlayerUuid);
-                                } else {
-                                    failAndResetState(decision.reason());
-                                }
-                            }
-                            case PAUSE -> {
-                                sendToGUI(steve.getSteveName(),
-                                    "Pausing: " + decision.reason());
-                                // Re-insert for later retry after delay
-                                if (failedTask != null) {
-                                    ((LinkedList<Task>) taskQueue).addFirst(failedTask);
-                                }
-                            }
-                            case ABORT -> {
-                                taskQueue.clear();
-                                currentTaskAttempts = 0;
-                                planReplanCount = 0;
-                                failAndResetState(decision.reason());
-                                sendToGUI(steve.getSteveName(),
-                                    "Stopping: " + decision.reason());
-                                clearCurrentGoal();
-                            }
-                            case ASK_PLAYER -> {
-                                taskQueue.clear();
-                                failAndResetState("needs guidance");
-                                sendToGUI(steve.getSteveName(),
-                                    "I need help: " + result.getMessage());
-                                clearCurrentGoal();
-                            }
-                        }
+                        handleCommandPathFailure(action.getTask(), result);
                     }
                 } else {
                     if (ticksSinceLastAction % 100 == 0) {
@@ -559,9 +460,8 @@ public class ActionExecutor {
                 publishCompletion(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
                     "Invalid autonomous task").build(), String.valueOf(task));
             } else {
-                taskQueue.clear();
-                failAndResetState("invalid task");
-                clearCurrentGoal();
+                handleCommandPathFailure(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                    "Invalid task").build());
             }
             sendToGUI(steve.getSteveName(), "I rejected an invalid action from the AI plan.");
             return;
@@ -578,9 +478,8 @@ public class ActionExecutor {
                 publishCompletion(task, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
                     "Permission denied for autonomous action").build(), task.toString());
             } else {
-                taskQueue.clear();
-                failAndResetState("permission denied");
-                clearCurrentGoal();
+                handleCommandPathFailure(task, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
+                    "Permission denied").build());
             }
             sendToGUI(steve.getSteveName(), "I don't have permission to " + actionType + ".");
             return;
@@ -597,9 +496,8 @@ public class ActionExecutor {
                 publishCompletion(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
                     "No registered action factory").requiresReplanning(true).build(), task.toString());
             } else {
-                taskQueue.clear();
-                failAndResetState("action factory unavailable");
-                clearCurrentGoal();
+                handleCommandPathFailure(task, ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                    "No registered action factory").requiresReplanning(true).build());
             }
             return;
         }
@@ -612,11 +510,15 @@ public class ActionExecutor {
             if (autonomyManaged) {
                 publishCompletion(rejectedTask, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
                     "Safety interceptor rejected the action").build(), rejectedDescription);
+            } else {
+                handleCommandPathFailure(rejectedTask, ActionResult.failure(ActionResult.ERROR_PERMISSION_DENIED,
+                    "Safety interceptor rejected the action").build());
             }
             sendToGUI(steve.getSteveName(), "Action was rejected by a safety interceptor.");
             return;
         }
         currentAction.start();
+        startedAction = new ActionStart(currentAction.getTask(), currentAction.getDescription());
         SteveMod.LOGGER.info("Action started! Is complete: {}", currentAction.isComplete());
     }
 
@@ -709,15 +611,6 @@ public class ActionExecutor {
         return isPlanning;
     }
 
-    /**
-     * Returns the recovery policy used for deterministic error handling.
-     *
-     * @return RecoveryPolicy instance
-     */
-    public RecoveryPolicy getRecoveryPolicy() {
-        return recoveryPolicy;
-    }
-
     public void shutdown() {
         if (steve.getMemory().getActiveGoal() != null
                 && !steve.getMemory().getActiveGoal().isTerminal()) {
@@ -728,8 +621,64 @@ public class ActionExecutor {
         eventBus.shutdown();
     }
 
+    /**
+     * Command-path recovery: retry a bounded number of times, skip one non-retryable
+     * step, and abort only for permission/cancel/invalid-LLM failures.
+     */
+    public static CommandPathDecision decideCommandPathFailure(ActionResult result, int attempts) {
+        return decideCommandPathFailure(result, attempts, MAX_COMMAND_PATH_RETRIES);
+    }
+
+    public static CommandPathDecision decideCommandPathFailure(ActionResult result, int attempts,
+            int maxRetries) {
+        if (result == null) {
+            return CommandPathDecision.ABORT;
+        }
+        String code = result.getErrorCode();
+        if (ActionResult.ERROR_PERMISSION_DENIED.equals(code)
+                || ActionResult.ERROR_CANCELLED.equals(code)
+                || ActionResult.ERROR_LLM_INVALID.equals(code)) {
+            return CommandPathDecision.ABORT;
+        }
+        int limit = Math.max(0, maxRetries);
+        if (result.isRetryable()
+                && attempts < limit
+                && !ActionResult.ERROR_PROTECTED.equals(code)
+                && !ActionResult.ERROR_VALIDATION.equals(code)) {
+            return CommandPathDecision.RETRY;
+        }
+        return CommandPathDecision.SKIP;
+    }
+
+    private void handleCommandPathFailure(Task task, ActionResult result) {
+        currentAction = null;
+        CommandPathDecision decision = decideCommandPathFailure(result, commandPathAttempts);
+        switch (decision) {
+            case RETRY -> {
+                commandPathAttempts++;
+                if (task != null) {
+                    ((LinkedList<Task>) taskQueue).addFirst(task);
+                }
+                sendToGUI(steve.getSteveName(), "Retrying: " + result.getMessage());
+            }
+            case SKIP -> {
+                commandPathAttempts = 0;
+                sendToGUI(steve.getSteveName(), "Skipping: "
+                    + (result == null ? "failed action" : result.getMessage()));
+            }
+            case ABORT -> {
+                commandPathAttempts = 0;
+                taskQueue.clear();
+                failAndResetState("action failed: "
+                    + (result == null ? ActionResult.ERROR_UNKNOWN : result.getErrorCode()));
+                clearCurrentGoal();
+            }
+        }
+    }
+
     private void applyPlan(ResponseParser.ParsedResponse response) {
         taskQueue.clear();
+        commandPathAttempts = 0;
 
         int rejectedTasks = 0;
         for (Task task : response.getTasks()) {

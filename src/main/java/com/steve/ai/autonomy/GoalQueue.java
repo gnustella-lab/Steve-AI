@@ -16,22 +16,31 @@ public final class GoalQueue {
         .thenComparingLong(entry -> entry.sequence);
 
     private final PriorityQueue<Entry> pending = new PriorityQueue<>(ORDER);
-    private final Map<UUID, AgentGoal> paused = new HashMap<>();
+    private final Map<UUID, Entry> paused = new HashMap<>();
     private long sequence;
     private AgentGoal active;
 
     public void enqueue(AgentGoal goal) {
-        if (goal == null || goal.isTerminal()) return;
-        goal.pause(0L);
+        enqueue(goal, 0L);
+    }
+
+    public void enqueue(AgentGoal goal, long now) {
+        if (goal == null || !goal.canAutoResume()) return;
+        removeQueued(goal.getId());
+        if (active != null && active.getId().equals(goal.getId())) return;
+        if (!goal.pause(now)) return;
         pending.offer(new Entry(goal, sequence++));
     }
 
     public AgentGoal pollNext() {
+        return pollNext(0L);
+    }
+
+    public AgentGoal pollNext(long now) {
         Entry next;
         while ((next = pending.poll()) != null) {
-            if (next.goal.isTerminal()) continue;
+            if (!next.goal.canAutoResume() || !next.goal.activate(now)) continue;
             active = next.goal;
-            active.activate(0L);
             return active;
         }
         active = null;
@@ -40,9 +49,8 @@ public final class GoalQueue {
 
     /** Restores one persisted active goal ahead of its paused prerequisite/interrupt backlog. */
     public void activate(AgentGoal goal, long now) {
-        if (goal == null || goal.isTerminal()) return;
-        pending.removeIf(entry -> entry.goal().getId().equals(goal.getId()));
-        paused.remove(goal.getId());
+        if (goal == null || !goal.canAutoResume()) return;
+        removeQueued(goal.getId());
         active = goal;
         active.activate(now);
     }
@@ -52,7 +60,7 @@ public final class GoalQueue {
     public void pauseActive(long now) {
         if (active == null) return;
         if (active.pause(now)) {
-            paused.put(active.getId(), active);
+            paused.put(active.getId(), new Entry(active, sequence++));
         }
         active = null;
     }
@@ -61,8 +69,8 @@ public final class GoalQueue {
     public void pauseAll(long now) {
         pauseActive(now);
         for (Entry entry : pending) {
-            if (!entry.goal().isTerminal() && entry.goal().pause(now)) {
-                paused.put(entry.goal().getId(), entry.goal());
+            if (entry.goal.canAutoResume() && entry.goal.pause(now)) {
+                paused.put(entry.goal.getId(), entry);
             }
         }
         pending.clear();
@@ -70,11 +78,12 @@ public final class GoalQueue {
 
     /** Requeues every paused goal in its original priority order. */
     public void resumeAll(long now) {
-        List<AgentGoal> goals = new ArrayList<>(paused.values());
+        List<Entry> entries = new ArrayList<>(paused.values());
+        entries.sort(ORDER);
         paused.clear();
-        goals.forEach(goal -> {
-            if (!goal.isTerminal()) {
-                goal.activate(now);
+        entries.forEach(entry -> {
+            AgentGoal goal = entry.goal;
+            if (goal.canAutoResume() && goal.activate(now)) {
                 goal.pause(now);
                 pending.offer(new Entry(goal, sequence++));
             }
@@ -82,16 +91,18 @@ public final class GoalQueue {
     }
 
     public void resume(UUID goalId, long now) {
-        AgentGoal goal = paused.remove(goalId);
-        if (goal != null && goal.activate(now)) {
-            pending.offer(new Entry(goal, sequence++));
-            goal.pause(now);
+        if (goalId == null) return;
+        Entry pausedEntry = paused.remove(goalId);
+        if (pausedEntry != null && pausedEntry.goal.canAutoResume()
+                && pausedEntry.goal.activate(now)) {
+            pausedEntry.goal.pause(now);
+            pending.offer(new Entry(pausedEntry.goal, sequence++));
             return;
         }
         for (Entry entry : pending) {
-            if (entry.goal().getId().equals(goalId)) {
-                entry.goal().activate(now);
-                entry.goal().pause(now);
+            if (entry.goal.getId().equals(goalId) && entry.goal.canAutoResume()) {
+                entry.goal.activate(now);
+                entry.goal.pause(now);
                 return;
             }
         }
@@ -105,20 +116,23 @@ public final class GoalQueue {
     }
 
     public boolean cancel(UUID goalId, long now) {
+        if (goalId == null) return false;
         if (active != null && active.getId().equals(goalId)) {
             active.cancel(now);
             active = null;
             return true;
         }
-        AgentGoal pausedGoal = paused.remove(goalId);
-        if (pausedGoal != null) {
-            pausedGoal.cancel(now);
+        Entry pausedEntry = paused.remove(goalId);
+        if (pausedEntry != null) {
+            pausedEntry.goal.cancel(now);
             return true;
         }
-        for (Entry entry : pending) {
+        var iterator = pending.iterator();
+        while (iterator.hasNext()) {
+            Entry entry = iterator.next();
             if (entry.goal.getId().equals(goalId)) {
                 entry.goal.cancel(now);
-                pending.remove(entry);
+                iterator.remove();
                 return true;
             }
         }
@@ -132,14 +146,16 @@ public final class GoalQueue {
     }
 
     public List<AgentGoal> getPausedGoals() {
-        return Collections.unmodifiableList(new ArrayList<>(paused.values()));
+        List<Entry> entries = new ArrayList<>(paused.values());
+        entries.sort(ORDER);
+        return Collections.unmodifiableList(entries.stream().map(Entry::goal).toList());
     }
 
     public AgentGoal find(UUID goalId) {
         if (goalId == null) return null;
         if (active != null && active.getId().equals(goalId)) return active;
-        AgentGoal pausedGoal = paused.get(goalId);
-        if (pausedGoal != null) return pausedGoal;
+        Entry pausedGoal = paused.get(goalId);
+        if (pausedGoal != null) return pausedGoal.goal;
         return pending.stream().map(Entry::goal)
             .filter(goal -> goal.getId().equals(goalId)).findFirst().orElse(null);
     }
@@ -148,13 +164,18 @@ public final class GoalQueue {
     public void cancelAll(long now) {
         if (active != null) active.cancel(now);
         pending.forEach(entry -> entry.goal.cancel(now));
-        paused.values().forEach(goal -> goal.cancel(now));
+        paused.values().forEach(entry -> entry.goal.cancel(now));
         clear();
     }
 
     public int size() { return pending.size(); }
     public boolean isEmpty() { return pending.isEmpty() && active == null; }
     public void clear() { pending.clear(); paused.clear(); active = null; }
+
+    private void removeQueued(UUID goalId) {
+        pending.removeIf(entry -> entry.goal.getId().equals(goalId));
+        paused.remove(goalId);
+    }
 
     private record Entry(AgentGoal goal, long sequence) {
     }

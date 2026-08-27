@@ -11,6 +11,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentGoalTest {
     @Test
+    void persistsBoundedVersionedIntentAndPrimitiveProgress() {
+        String oversizedDescription = "x".repeat(4_096);
+        AgentGoal goal = AgentGoal.create(oversizedDescription, GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        goal.recordProgress(Integer.MAX_VALUE, Integer.MAX_VALUE, 2L);
+
+        CompoundTag tag = goal.save();
+        AgentGoal restored = AgentGoal.load(tag);
+
+        assertEquals(GoalIntent.DATA_VERSION, tag.getCompound("Intent").getInt("DataVersion"));
+        assertEquals(GoalProgress.DATA_VERSION, tag.getCompound("Progress").getInt("DataVersion"));
+        assertTrue(restored.getIntent().getDescription().length() <= GoalIntent.MAX_DESCRIPTION_LENGTH);
+        assertTrue(restored.getProgress().getCompletedUnits() <= GoalProgress.MAX_COUNTER);
+        assertTrue(restored.getProgress().getTargetUnits() <= GoalProgress.MAX_COUNTER);
+    }
+
+    @Test
+    void snapshotsConfiguredBudgetLimitsWhenCreatingAGoal() {
+        GoalBudget configured = GoalBudget.fromConfiguredLimits(7, 11, 13, 17, 19);
+        AgentGoal goal = AgentGoal.create("bounded", GoalOrigin.USER, GoalPriority.USER,
+            null, 1L, configured);
+
+        configured.recordLlmCall();
+
+        assertEquals(7, goal.getBudget().getMaxRetriesPerStep());
+        assertEquals(11, goal.getBudget().getMaxReplans());
+        assertEquals(13, goal.getBudget().getMaxLlmCalls());
+        assertEquals(0, goal.getBudget().getLlmCalls());
+    }
+
+    @Test
     void preservesLifecycleProvenanceBudgetAndMetadataAcrossNbt() {
         UUID parent = UUID.randomUUID();
         AgentGoal goal = AgentGoal.create(

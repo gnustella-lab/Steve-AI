@@ -14,8 +14,8 @@ import java.util.UUID;
  * Persistent user or agent objective. Execution state is intentionally separate from this model.
  */
 public final class AgentGoal {
-    public static final int DATA_VERSION = 1;
-    private static final int MAX_DESCRIPTION_LENGTH = 512;
+    public static final int DATA_VERSION = 2;
+    private static final int MAX_DESCRIPTION_LENGTH = GoalIntent.MAX_DESCRIPTION_LENGTH;
     private static final int MAX_METADATA_ENTRIES = 32;
     private static final int MAX_METADATA_VALUE_LENGTH = 256;
 
@@ -27,10 +27,10 @@ public final class AgentGoal {
     private final long createdAt;
     private long updatedAt;
     private GoalStatus status;
-    private int attemptCount;
-    private int replanCount;
     private GoalConstraints constraints;
     private final GoalBudget budget;
+    private GoalIntent intent;
+    private GoalProgress progress;
     private final Map<String, Object> metadata = new LinkedHashMap<>();
 
     private AgentGoal(UUID id, String description, GoalOrigin origin, GoalPriority priority,
@@ -42,19 +42,29 @@ public final class AgentGoal {
         this.priority = Objects.requireNonNull(priority, "priority");
         this.status = Objects.requireNonNull(status, "status");
         this.parentGoalId = parentGoalId;
-        this.createdAt = createdAt;
-        this.updatedAt = Math.max(createdAt, updatedAt);
-        this.attemptCount = Math.max(0, attemptCount);
-        this.replanCount = Math.max(0, replanCount);
+        this.createdAt = Math.max(0L, createdAt);
+        this.updatedAt = Math.max(this.createdAt, updatedAt);
         this.constraints = constraints == null ? GoalConstraints.empty() : constraints;
-        this.budget = budget == null ? new GoalBudget() : budget;
+        this.budget = budget == null ? new GoalBudget() : budget.copy();
+        this.intent = GoalIntent.of(this.description);
+        this.progress = new GoalProgress(0, 0, 0, 0,
+            attemptCount, replanCount, 0, this.updatedAt);
+        if (this.constraints.targetQuantity() > 0) {
+            this.progress.setTargetUnits(this.constraints.targetQuantity());
+        }
     }
 
     public static AgentGoal create(String description, GoalOrigin origin, GoalPriority priority,
             UUID parentGoalId, long now) {
+        return create(description, origin, priority, parentGoalId, now, new GoalBudget());
+    }
+
+    /** Creates a goal with a detached snapshot of the executive's configured limits. */
+    public static AgentGoal create(String description, GoalOrigin origin, GoalPriority priority,
+            UUID parentGoalId, long now, GoalBudget configuredBudget) {
         return new AgentGoal(UUID.randomUUID(), description, origin, priority,
             GoalStatus.PENDING, parentGoalId, now, now, 0, 0,
-            GoalConstraints.empty(), new GoalBudget());
+            GoalConstraints.empty(), configuredBudget);
     }
 
     public UUID getId() { return id; }
@@ -65,24 +75,43 @@ public final class AgentGoal {
     public UUID getParentGoalId() { return parentGoalId; }
     public long getCreatedAt() { return createdAt; }
     public long getUpdatedAt() { return updatedAt; }
-    public int getAttemptCount() { return attemptCount; }
-    public int getReplanCount() { return replanCount; }
+    public int getAttemptCount() { return progress.getAttemptCount(); }
+    public int getReplanCount() { return progress.getReplanCount(); }
     public GoalConstraints getConstraints() { return constraints; }
     public GoalBudget getBudget() { return budget; }
+    public GoalIntent getIntent() { return intent; }
+    public GoalProgress getProgress() { return progress; }
+
     public Map<String, Object> getMetadata() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
     }
 
+    public void setIntent(GoalIntent intent) {
+        this.intent = intent == null ? GoalIntent.of(description) : intent;
+        touch(updatedAt);
+    }
+
+    public void setProgress(GoalProgress progress) {
+        this.progress = progress == null ? new GoalProgress() : progress.copy();
+        touch(this.progress.getLastProgressTick());
+    }
+
     public void setConstraints(GoalConstraints constraints) {
         this.constraints = constraints == null ? GoalConstraints.empty() : constraints;
+        if (this.constraints.targetQuantity() > 0) {
+            this.progress.setTargetUnits(this.constraints.targetQuantity());
+        }
         touch(updatedAt);
     }
 
     public void putMetadata(String key, Object value) {
-        if (key == null || key.isBlank() || metadata.size() >= MAX_METADATA_ENTRIES && !metadata.containsKey(key)) {
+        if (key == null || key.isBlank()) {
             return;
         }
         String normalizedKey = bounded(key.trim(), 64);
+        if (metadata.size() >= MAX_METADATA_ENTRIES && !metadata.containsKey(normalizedKey)) {
+            return;
+        }
         if (value == null) {
             metadata.remove(normalizedKey);
         } else if (value instanceof String || value instanceof Number || value instanceof Boolean) {
@@ -91,14 +120,14 @@ public final class AgentGoal {
     }
 
     public boolean activate(long now) {
-        if (status.isTerminal()) return false;
+        if (!status.isAutoResumable()) return false;
         status = GoalStatus.ACTIVE;
         touch(now);
         return true;
     }
 
     public boolean pause(long now) {
-        if (status.isTerminal()) return false;
+        if (!status.isAutoResumable()) return false;
         status = GoalStatus.PAUSED;
         touch(now);
         return true;
@@ -134,20 +163,32 @@ public final class AgentGoal {
         return true;
     }
 
+    public void recordProgress(int completedUnits, int targetUnits, long now) {
+        progress.record(completedUnits, targetUnits, now);
+        touch(now);
+    }
+
+    public void recordStepProgress(int completedSteps, int totalSteps, long now) {
+        progress.recordStepCompletion(completedSteps, totalSteps, now);
+        touch(now);
+    }
+
     public void incrementAttempt() {
-        attemptCount = Math.min(Integer.MAX_VALUE, attemptCount + 1);
+        progress.recordAttempt(updatedAt);
         touch(updatedAt);
     }
 
     public void incrementReplan() {
-        replanCount = Math.min(Integer.MAX_VALUE, replanCount + 1);
+        progress.recordReplan(updatedAt);
         touch(updatedAt);
     }
 
     public boolean isTerminal() { return status.isTerminal(); }
 
+    public boolean canAutoResume() { return status.isAutoResumable(); }
+
     private void touch(long now) {
-        updatedAt = Math.max(updatedAt, now);
+        updatedAt = Math.max(updatedAt, Math.max(0L, now));
     }
 
     public CompoundTag save() {
@@ -161,8 +202,10 @@ public final class AgentGoal {
         if (parentGoalId != null) tag.putUUID("ParentGoalId", parentGoalId);
         tag.putLong("CreatedAt", createdAt);
         tag.putLong("UpdatedAt", updatedAt);
-        tag.putInt("AttemptCount", attemptCount);
-        tag.putInt("ReplanCount", replanCount);
+        tag.putInt("AttemptCount", progress.getAttemptCount());
+        tag.putInt("ReplanCount", progress.getReplanCount());
+        tag.put("Intent", intent.save());
+        tag.put("Progress", progress.save());
         tag.put("Constraints", constraints.save());
         tag.put("Budget", budget.save());
 
@@ -197,6 +240,12 @@ public final class AgentGoal {
             tag.contains("Budget", Tag.TAG_COMPOUND)
                 ? GoalBudget.load(tag.getCompound("Budget")) : new GoalBudget());
 
+        if (tag.contains("Intent", Tag.TAG_COMPOUND)) {
+            goal.intent = GoalIntent.load(tag.getCompound("Intent"));
+        }
+        if (tag.contains("Progress", Tag.TAG_COMPOUND)) {
+            goal.progress = GoalProgress.load(tag.getCompound("Progress"));
+        }
         if (tag.contains("Metadata", Tag.TAG_LIST)) {
             ListTag list = tag.getList("Metadata", Tag.TAG_COMPOUND);
             for (int i = 0; i < Math.min(list.size(), MAX_METADATA_ENTRIES); i++) {

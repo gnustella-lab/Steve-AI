@@ -25,6 +25,13 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 public final class ObservationSnapshot {
+    /** Maximum number of entries in each positioned observation category. */
+    public static final int MAX_POSITIONED_OBSERVATIONS = 12;
+    /** Maximum characters retained for one scalar observation field. */
+    public static final int MAX_FIELD_LENGTH = 512;
+    /** Maximum serialized prompt context length. */
+    public static final int MAX_PROMPT_CONTEXT_LENGTH = 8_192;
+
     // Core positioning
     private final int x;
     private final int y;
@@ -54,8 +61,11 @@ public final class ObservationSnapshot {
     private final List<String> nearbyPlayers;
     private final List<String> nearbyEntities;
     private final List<String> nearbyBlocks;
+    private final List<String> nearbyResources;
+    private final List<String> nearbyStations;
     private final List<String> nearbyThreats;
     private final List<String> nearbyContainers;
+    private final List<String> nearbyHazards;
     private final List<String> nearbyDroppedItems;
     private final List<String> relevantMemory;
     private final List<String> protectedPositions;
@@ -97,8 +107,11 @@ public final class ObservationSnapshot {
         this.nearbyPlayers = List.copyOf(builder.nearbyPlayers);
         this.nearbyEntities = List.copyOf(builder.nearbyEntities);
         this.nearbyBlocks = List.copyOf(builder.nearbyBlocks);
+        this.nearbyResources = List.copyOf(builder.nearbyResources);
+        this.nearbyStations = List.copyOf(builder.nearbyStations);
         this.nearbyThreats = List.copyOf(builder.nearbyThreats);
         this.nearbyContainers = List.copyOf(builder.nearbyContainers);
+        this.nearbyHazards = List.copyOf(builder.nearbyHazards);
         this.nearbyDroppedItems = List.copyOf(builder.nearbyDroppedItems);
         this.relevantMemory = List.copyOf(builder.relevantMemory);
         this.protectedPositions = List.copyOf(builder.protectedPositions);
@@ -225,7 +238,27 @@ public final class ObservationSnapshot {
             }
             
             builder.nearbyBlocks(blocks.stream().limit(20).collect(Collectors.toList()));
-            builder.nearbyContainers(containers.stream().limit(10).collect(Collectors.toList()));
+
+            List<String> resources = new ArrayList<>();
+            List<String> stations = new ArrayList<>();
+            List<String> positionedContainers = new ArrayList<>();
+            List<String> hazards = new ArrayList<>();
+            for (Map.Entry<BlockPos, Block> entry : wk.getNearbyBlockPositions().entrySet()) {
+                BlockPos blockPos = entry.getKey();
+                Block block = entry.getValue();
+                ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+                String blockName = id == null ? "unknown" : id.getPath();
+                String positioned = blockName + "@[" + blockPos.getX() + ","
+                    + blockPos.getY() + "," + blockPos.getZ() + "]";
+                if (wk.isResource(block)) resources.add(positioned);
+                if (wk.isStation(block)) stations.add(positioned);
+                if (wk.isContainer(block)) positionedContainers.add(positioned);
+                if (wk.isHazard(block)) hazards.add(positioned);
+            }
+            builder.nearbyResources(resources);
+            builder.nearbyStations(stations);
+            builder.nearbyContainers(positionedContainers);
+            builder.nearbyHazards(hazards);
         }
 
         return builder.build();
@@ -261,6 +294,10 @@ public final class ObservationSnapshot {
         if (!nearbyThreats.isEmpty()) {
             sb.append("Nearby threats: ").append(String.join(", ", nearbyThreats)).append("\n");
         }
+        appendObservationSection(sb, "Nearby resources", nearbyResources);
+        appendObservationSection(sb, "Nearby stations", nearbyStations);
+        appendObservationSection(sb, "Nearby containers", nearbyContainers);
+        appendObservationSection(sb, "Nearby hazards", nearbyHazards);
         if (!nearbyDroppedItems.isEmpty()) {
             sb.append("Dropped items: ").append(String.join(", ", nearbyDroppedItems)).append("\n");
         }
@@ -288,7 +325,13 @@ public final class ObservationSnapshot {
             sb.append("Recent: ").append(String.join(", ", recentActions)).append("\n");
         }
         
-        return sb.toString().trim();
+        return bounded(sb.toString().trim(), MAX_PROMPT_CONTEXT_LENGTH);
+    }
+
+    private static void appendObservationSection(StringBuilder builder, String label, List<String> values) {
+        if (!values.isEmpty()) {
+            builder.append(label).append(": ").append(String.join(", ", values)).append("\n");
+        }
     }
 
     @Override
@@ -311,10 +354,13 @@ public final class ObservationSnapshot {
                inventoryUsedSlots == that.inventoryUsedSlots && inventoryCapacity == that.inventoryCapacity &&
                Objects.equals(mainHandSummary, that.mainHandSummary) && 
                Objects.equals(nearbyPlayers, that.nearbyPlayers) && 
-               Objects.equals(nearbyEntities, that.nearbyEntities) && 
-               Objects.equals(nearbyBlocks, that.nearbyBlocks) && 
-               Objects.equals(nearbyThreats, that.nearbyThreats) && 
-               Objects.equals(nearbyContainers, that.nearbyContainers) && 
+               Objects.equals(nearbyEntities, that.nearbyEntities) &&
+               Objects.equals(nearbyBlocks, that.nearbyBlocks) &&
+               Objects.equals(nearbyResources, that.nearbyResources) &&
+               Objects.equals(nearbyStations, that.nearbyStations) &&
+               Objects.equals(nearbyThreats, that.nearbyThreats) &&
+               Objects.equals(nearbyContainers, that.nearbyContainers) &&
+               Objects.equals(nearbyHazards, that.nearbyHazards) &&
                Objects.equals(nearbyDroppedItems, that.nearbyDroppedItems) &&
                Objects.equals(relevantMemory, that.relevantMemory) &&
                Objects.equals(protectedPositions, that.protectedPositions) &&
@@ -334,7 +380,8 @@ public final class ObservationSnapshot {
                             health, maxHealth, lightLevel, inventorySummary, equipmentSummary, 
                             inventoryUsedSlots, inventoryCapacity,
                             mainHandSummary, nearbyPlayers, nearbyEntities, nearbyBlocks, 
-                            nearbyThreats, nearbyContainers, nearbyDroppedItems, relevantMemory,
+                            nearbyResources, nearbyStations, nearbyThreats, nearbyContainers,
+                            nearbyHazards, nearbyDroppedItems, relevantMemory,
                             protectedPositions, currentGoal, activeSubgoal, currentAction,
                             lastActionResult, recentActions, agentState, navigationState,
                             ownerName, distanceToOwner, capturedAtTick);
@@ -361,8 +408,11 @@ public final class ObservationSnapshot {
     public List<String> getNearbyPlayers() { return nearbyPlayers; }
     public List<String> getNearbyEntities() { return nearbyEntities; }
     public List<String> getNearbyBlocks() { return nearbyBlocks; }
+    public List<String> getNearbyResources() { return nearbyResources; }
+    public List<String> getNearbyStations() { return nearbyStations; }
     public List<String> getNearbyThreats() { return nearbyThreats; }
     public List<String> getNearbyContainers() { return nearbyContainers; }
+    public List<String> getNearbyHazards() { return nearbyHazards; }
     public List<String> getNearbyDroppedItems() { return nearbyDroppedItems; }
     public List<String> getRelevantMemory() { return relevantMemory; }
     public List<String> getProtectedPositions() { return protectedPositions; }
@@ -386,8 +436,9 @@ public final class ObservationSnapshot {
             .inventorySummary(inventorySummary).equipmentSummary(equipmentSummary)
             .inventoryUsedSlots(inventoryUsedSlots).inventoryCapacity(inventoryCapacity)
             .mainHandSummary(mainHandSummary).nearbyPlayers(nearbyPlayers)
-            .nearbyEntities(nearbyEntities).nearbyBlocks(nearbyBlocks).nearbyThreats(nearbyThreats)
-            .nearbyContainers(nearbyContainers).nearbyDroppedItems(nearbyDroppedItems)
+            .nearbyEntities(nearbyEntities).nearbyBlocks(nearbyBlocks).nearbyResources(nearbyResources)
+            .nearbyStations(nearbyStations).nearbyThreats(nearbyThreats).nearbyContainers(nearbyContainers)
+            .nearbyHazards(nearbyHazards).nearbyDroppedItems(nearbyDroppedItems)
             .relevantMemory(relevantMemory).protectedPositions(protectedPositions)
             .currentGoal(currentGoal).activeSubgoal(activeSubgoal).currentAction(currentAction)
             .lastActionResult(lastActionResult).recentActions(recentActions).agentState(agentState)
@@ -414,8 +465,11 @@ public final class ObservationSnapshot {
         private List<String> nearbyPlayers = new ArrayList<>();
         private List<String> nearbyEntities = new ArrayList<>();
         private List<String> nearbyBlocks = new ArrayList<>();
+        private List<String> nearbyResources = new ArrayList<>();
+        private List<String> nearbyStations = new ArrayList<>();
         private List<String> nearbyThreats = new ArrayList<>();
         private List<String> nearbyContainers = new ArrayList<>();
+        private List<String> nearbyHazards = new ArrayList<>();
         private List<String> nearbyDroppedItems = new ArrayList<>();
         private List<String> relevantMemory = new ArrayList<>();
         private List<String> protectedPositions = new ArrayList<>();
@@ -433,37 +487,43 @@ public final class ObservationSnapshot {
         public Builder x(int x) { this.x = x; return this; }
         public Builder y(int y) { this.y = y; return this; }
         public Builder z(int z) { this.z = z; return this; }
-        public Builder dimension(String dimension) { this.dimension = dimension; return this; }
-        public Builder biome(String biome) { this.biome = biome; return this; }
+        public Builder dimension(String dimension) { this.dimension = boundedText(dimension); return this; }
+        public Builder biome(String biome) { this.biome = boundedText(biome); return this; }
         public Builder dayTime(long dayTime) { this.dayTime = dayTime; return this; }
         public Builder isNight(boolean isNight) { this.isNight = isNight; return this; }
         public Builder isRaining(boolean isRaining) { this.isRaining = isRaining; return this; }
         public Builder isThundering(boolean isThundering) { this.isThundering = isThundering; return this; }
-        public Builder health(float health) { this.health = health; return this; }
-        public Builder maxHealth(float maxHealth) { this.maxHealth = maxHealth; return this; }
+        public Builder health(float health) { this.health = finiteFloat(health, 20.0f); return this; }
+        public Builder maxHealth(float maxHealth) { this.maxHealth = finiteFloat(maxHealth, 20.0f); return this; }
         public Builder lightLevel(int lightLevel) { this.lightLevel = lightLevel; return this; }
-        public Builder inventorySummary(String inventorySummary) { this.inventorySummary = inventorySummary; return this; }
-        public Builder equipmentSummary(String equipmentSummary) { this.equipmentSummary = equipmentSummary; return this; }
+        public Builder inventorySummary(String inventorySummary) { this.inventorySummary = boundedText(inventorySummary); return this; }
+        public Builder equipmentSummary(String equipmentSummary) { this.equipmentSummary = boundedText(equipmentSummary); return this; }
         public Builder inventoryUsedSlots(int inventoryUsedSlots) { this.inventoryUsedSlots = Math.max(0, inventoryUsedSlots); return this; }
         public Builder inventoryCapacity(int inventoryCapacity) { this.inventoryCapacity = Math.max(0, inventoryCapacity); return this; }
-        public Builder mainHandSummary(String mainHandSummary) { this.mainHandSummary = mainHandSummary; return this; }
-        public Builder nearbyPlayers(List<String> nearbyPlayers) { this.nearbyPlayers = nearbyPlayers; return this; }
-        public Builder nearbyEntities(List<String> nearbyEntities) { this.nearbyEntities = nearbyEntities; return this; }
-        public Builder nearbyBlocks(List<String> nearbyBlocks) { this.nearbyBlocks = nearbyBlocks; return this; }
-        public Builder nearbyThreats(List<String> nearbyThreats) { this.nearbyThreats = nearbyThreats; return this; }
-        public Builder nearbyContainers(List<String> nearbyContainers) { this.nearbyContainers = nearbyContainers; return this; }
+        public Builder mainHandSummary(String mainHandSummary) { this.mainHandSummary = boundedText(mainHandSummary); return this; }
+        public Builder nearbyPlayers(List<String> nearbyPlayers) { this.nearbyPlayers = boundedList(nearbyPlayers, 10); return this; }
+        public Builder nearbyEntities(List<String> nearbyEntities) { this.nearbyEntities = boundedList(nearbyEntities, 15); return this; }
+        public Builder nearbyBlocks(List<String> nearbyBlocks) { this.nearbyBlocks = boundedList(nearbyBlocks, 20); return this; }
+        public Builder nearbyResources(List<String> nearbyResources) { this.nearbyResources = boundedList(nearbyResources, MAX_POSITIONED_OBSERVATIONS); return this; }
+        public Builder nearbyStations(List<String> nearbyStations) { this.nearbyStations = boundedList(nearbyStations, MAX_POSITIONED_OBSERVATIONS); return this; }
+        public Builder nearbyThreats(List<String> nearbyThreats) { this.nearbyThreats = boundedList(nearbyThreats, 15); return this; }
+        public Builder nearbyContainers(List<String> nearbyContainers) { this.nearbyContainers = boundedList(nearbyContainers, MAX_POSITIONED_OBSERVATIONS); return this; }
+        public Builder nearbyHazards(List<String> nearbyHazards) { this.nearbyHazards = boundedList(nearbyHazards, MAX_POSITIONED_OBSERVATIONS); return this; }
         public Builder nearbyDroppedItems(List<String> nearbyDroppedItems) { this.nearbyDroppedItems = boundedList(nearbyDroppedItems, 12); return this; }
         public Builder relevantMemory(List<String> relevantMemory) { this.relevantMemory = boundedList(relevantMemory, 12); return this; }
         public Builder protectedPositions(List<String> protectedPositions) { this.protectedPositions = boundedList(protectedPositions, 12); return this; }
-        public Builder currentGoal(String currentGoal) { this.currentGoal = currentGoal; return this; }
-        public Builder activeSubgoal(String activeSubgoal) { this.activeSubgoal = activeSubgoal; return this; }
-        public Builder currentAction(String currentAction) { this.currentAction = currentAction; return this; }
-        public Builder lastActionResult(String lastActionResult) { this.lastActionResult = lastActionResult; return this; }
-        public Builder recentActions(List<String> recentActions) { this.recentActions = recentActions; return this; }
-        public Builder agentState(String agentState) { this.agentState = agentState; return this; }
-        public Builder navigationState(String navigationState) { this.navigationState = navigationState; return this; }
-        public Builder ownerName(String ownerName) { this.ownerName = ownerName; return this; }
-        public Builder distanceToOwner(double distanceToOwner) { this.distanceToOwner = distanceToOwner; return this; }
+        public Builder currentGoal(String currentGoal) { this.currentGoal = boundedText(currentGoal); return this; }
+        public Builder activeSubgoal(String activeSubgoal) { this.activeSubgoal = boundedText(activeSubgoal); return this; }
+        public Builder currentAction(String currentAction) { this.currentAction = boundedText(currentAction); return this; }
+        public Builder lastActionResult(String lastActionResult) { this.lastActionResult = boundedText(lastActionResult); return this; }
+        public Builder recentActions(List<String> recentActions) { this.recentActions = boundedList(recentActions, 12); return this; }
+        public Builder agentState(String agentState) { this.agentState = boundedText(agentState); return this; }
+        public Builder navigationState(String navigationState) { this.navigationState = boundedText(navigationState); return this; }
+        public Builder ownerName(String ownerName) { this.ownerName = boundedNullableText(ownerName); return this; }
+        public Builder distanceToOwner(double distanceToOwner) {
+            this.distanceToOwner = Double.isFinite(distanceToOwner) ? distanceToOwner : -1.0;
+            return this;
+        }
         public Builder capturedAtTick(long capturedAtTick) { this.capturedAtTick = capturedAtTick; return this; }
 
         public ObservationSnapshot build() {
@@ -472,7 +532,28 @@ public final class ObservationSnapshot {
 
         private static List<String> boundedList(List<String> values, int max) {
             if (values == null) return new ArrayList<>();
-            return values.stream().filter(java.util.Objects::nonNull).limit(max).toList();
+            return values.stream().filter(java.util.Objects::nonNull)
+                .map(value -> boundedText(value))
+                .limit(max).toList();
         }
+
+        private static String boundedText(String value) {
+            if (value == null) return "";
+            String normalized = value.trim();
+            return normalized.length() <= MAX_FIELD_LENGTH
+                ? normalized : normalized.substring(0, MAX_FIELD_LENGTH);
+        }
+
+        private static String boundedNullableText(String value) {
+            return value == null ? null : boundedText(value);
+        }
+
+        private static float finiteFloat(float value, float fallback) {
+            return Float.isFinite(value) ? value : fallback;
+        }
+    }
+
+    private static String bounded(String value, int max) {
+        return value.length() <= max ? value : value.substring(0, max);
     }
 }

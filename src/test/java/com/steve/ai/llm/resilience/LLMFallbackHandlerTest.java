@@ -1,6 +1,5 @@
 package com.steve.ai.llm.resilience;
 
-import com.steve.ai.action.Task;
 import com.steve.ai.di.SimpleServiceContainer;
 import com.steve.ai.llm.ResponseParser;
 import com.steve.ai.llm.async.LLMResponse;
@@ -11,7 +10,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LLMFallbackHandlerTest {
 
@@ -27,30 +28,47 @@ class LLMFallbackHandlerTest {
     }
 
     @Test
-    void miningFallbackUsesTheExecutableTaskSchema() {
+    void offlineFallbackNeverMutatesWorld() {
+        LLMFallbackHandler handler = new LLMFallbackHandler();
+        for (String prompt : java.util.List.of(
+                "mine iron ore", "gather wood", "build a stone house", "attack zombies")) {
+            LLMResponse fallback = handler.generateFallback(prompt, new RuntimeException("offline"));
+            ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(fallback.getContent());
+
+            assertNotNull(parsed, prompt);
+            assertEquals(ResponseParser.Decision.BLOCKED, parsed.getDecision(), prompt);
+            assertTrue(parsed.getTasks().isEmpty(), prompt);
+            assertFalse(fallback.getContent().contains("\"action\":\"mine\""), prompt);
+            assertFalse(fallback.getContent().contains("\"action\":\"build\""), prompt);
+            assertFalse(fallback.getContent().contains("\"action\":\"attack\""), prompt);
+        }
+    }
+
+
+    @Test
+    void unknownIntentFallsBackToSafeBlockedDecisionWithoutLegacyReasoningFields() {
         LLMResponse fallback = new LLMFallbackHandler().generateFallback(
-            "mine iron ore", new RuntimeException("offline"));
+            "do something surprising", new RuntimeException("offline"));
 
         ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(fallback.getContent());
 
         assertNotNull(parsed);
-        assertEquals("Mine nearby iron ore", parsed.getPlan());
-        assertEquals(1, parsed.getTasks().size());
-        Task task = parsed.getTasks().get(0);
-        assertEquals("mine", task.getAction());
-        assertEquals("iron_ore", task.getStringParameter("block"));
-        assertEquals(10, task.getIntParameter("quantity", -1));
+        assertEquals(ResponseParser.Decision.BLOCKED, parsed.getDecision());
+        assertEquals("blocked", parsed.getGoalStatus());
+        assertTrue(parsed.getTasks().isEmpty());
+        assertFalse(fallback.getContent().contains("reasoning"));
+        assertFalse(fallback.getContent().contains("\"plan\""));
     }
 
     @Test
-    void buildingIntentWinsOverResourceWordsInsideTheBuildingRequest() {
+    void everyPatternFallbackUsesTheCurrentDecisionEnvelope() {
         LLMResponse fallback = new LLMFallbackHandler().generateFallback(
-            "build a stone house", new RuntimeException("offline"));
+            "follow me", new RuntimeException("offline"));
 
-        ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(fallback.getContent());
-
-        assertNotNull(parsed);
-        assertEquals(1, parsed.getTasks().size());
-        assertEquals("build", parsed.getTasks().get(0).getAction());
+        assertNotNull(ResponseParser.parseAIResponse(fallback.getContent()));
+        assertTrue(fallback.getContent().contains("\"decision\":\"act\""));
+        assertTrue(fallback.getContent().contains("\"summary\""));
+        assertTrue(fallback.getContent().contains("\"goalStatus\":\"in_progress\""));
+        assertFalse(fallback.getContent().contains("reasoning"));
     }
 }

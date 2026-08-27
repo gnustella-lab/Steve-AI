@@ -2,13 +2,16 @@ package com.steve.ai.action;
 
 import java.util.Map;
 
-public class Task {
+/** Immutable, bounded handoff from planning to the action runtime. */
+public final class Task {
+    public static final int MAX_PARAMETER_COUNT = BoundedData.MAX_ENTRIES;
+
     private final String action;
     private final Map<String, Object> parameters;
 
     public Task(String action, Map<String, Object> parameters) {
-        this.action = action;
-        this.parameters = parameters;
+        this.action = BoundedData.boundedString(action);
+        this.parameters = BoundedData.copyMap(parameters);
     }
 
     public String getAction() {

@@ -72,12 +72,14 @@ class ResilientLLMClientTest {
             delegate, new LLMCache(), new LLMFallbackHandler());
 
         Map<String, Object> params = new java.util.HashMap<>(params("system-a"));
-        params.put("fallbackPrompt", "build a house");
+        params.put("fallbackPrompt", "follow me");
         LLMResponse result = client.sendAsync(
             "World context contains stone and iron, but the command is elsewhere", params).join();
 
         org.junit.jupiter.api.Assertions.assertTrue(
-            result.getContent().contains("\"action\":\"build\""));
+            result.getContent().contains("\"action\":\"follow\""));
+        org.junit.jupiter.api.Assertions.assertFalse(
+            result.getContent().contains("\"decision\":\"blocked\""));
     }
 
     @Test

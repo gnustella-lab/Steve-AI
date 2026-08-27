@@ -1,6 +1,7 @@
 package com.steve.ai.autonomy;
 
 import com.steve.ai.action.Task;
+import com.steve.ai.action.BoundedData;
 
 import java.util.Map;
 
@@ -21,9 +22,9 @@ public record RecoveryDecision(
     }
 
     public RecoveryDecision {
-        reason = reason == null ? "" : reason;
-        prerequisiteDescription = prerequisiteDescription == null ? "" : prerequisiteDescription;
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        reason = BoundedData.boundedString(reason);
+        prerequisiteDescription = BoundedData.boundedString(prerequisiteDescription);
+        metadata = BoundedData.copyMap(metadata);
     }
 
     public static RecoveryDecision retry(String reason, Task task) {

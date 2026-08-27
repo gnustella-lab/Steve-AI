@@ -33,6 +33,30 @@ public final class GoalBudget {
         this.maxRepeatedFailureFingerprint = bounded(maxRepeatedFailureFingerprint, 1, 32);
     }
 
+    /**
+     * Creates a pure-domain snapshot of the limits read by an executive from configuration.
+     * The returned budget owns its counters and never retains a reference to config objects.
+     */
+    public static GoalBudget fromConfiguredLimits(int maxRetriesPerStep, int maxReplans,
+            int maxLlmCalls, int maxConsecutiveFailures, int maxRepeatedFailureFingerprint) {
+        return new GoalBudget(maxRetriesPerStep, maxReplans, maxLlmCalls,
+            maxConsecutiveFailures, maxRepeatedFailureFingerprint);
+    }
+
+    public static GoalBudget fromLimits(int maxRetriesPerStep, int maxReplans,
+            int maxLlmCalls, int maxConsecutiveFailures, int maxRepeatedFailureFingerprint) {
+        return fromConfiguredLimits(maxRetriesPerStep, maxReplans, maxLlmCalls,
+            maxConsecutiveFailures, maxRepeatedFailureFingerprint);
+    }
+
+    public GoalBudget copy() {
+        GoalBudget copy = new GoalBudget(maxRetriesPerStep, maxReplans, maxLlmCalls,
+            maxConsecutiveFailures, maxRepeatedFailureFingerprint);
+        copy.llmCalls = llmCalls;
+        copy.consecutiveFailures = consecutiveFailures;
+        return copy;
+    }
+
     public int getMaxRetriesPerStep() { return maxRetriesPerStep; }
     public int getMaxReplans() { return maxReplans; }
     public int getMaxLlmCalls() { return maxLlmCalls; }

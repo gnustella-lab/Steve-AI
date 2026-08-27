@@ -11,6 +11,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PlanStepTest {
     @Test
+    void recordsActiveAttemptTimestampAndFailureHistory() {
+        PlanStep step = new PlanStep(new Task("mine", Map.of("block", "stone")));
+        step.markActive(10L);
+        step.incrementAttempt(11L);
+        ActionResult failure = ActionResult.failure(ActionResult.ERROR_PATHING, "blocked")
+            .retryable(true)
+            .requiresReplanning(true)
+            .build();
+        step.complete(failure, 12L);
+
+        PlanStep restored = PlanStep.load(step.save());
+
+        assertEquals(PlanStep.Status.FAILED, restored.getStatus());
+        assertEquals(10L, restored.getStartedAt());
+        assertEquals(1, restored.getAttemptHistory().size());
+        assertEquals(ActionResult.ERROR_PATHING,
+            restored.getAttemptHistory().get(0).getErrorCode());
+    }
+
+    @Test
     void persistsStepStatusAttemptsAndLastResult() {
         PlanStep step = new PlanStep(new Task("mine", Map.of("block", "stone", "quantity", 3)));
         step.markActive();

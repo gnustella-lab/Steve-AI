@@ -113,4 +113,65 @@ public class ObservationSnapshotTest {
         
         assertTrue(prompt.contains("Inventory:\n- empty"));
     }
+
+    @Test
+    public void boundsAndCopiesImportantPositionedObservations() {
+        List<String> oversized = java.util.stream.IntStream.range(0, 40)
+            .mapToObj(index -> "resource@[" + index + ",64,0]")
+            .toList();
+        String hugeInventory = "inventory ".repeat(200);
+
+        ObservationSnapshot snapshot = new ObservationSnapshot.Builder()
+            .inventorySummary(hugeInventory)
+            .nearbyResources(oversized)
+            .nearbyStations(oversized)
+            .nearbyContainers(oversized)
+            .nearbyHazards(oversized)
+            .build();
+
+        assertEquals(ObservationSnapshot.MAX_POSITIONED_OBSERVATIONS, snapshot.getNearbyResources().size());
+        assertEquals(ObservationSnapshot.MAX_POSITIONED_OBSERVATIONS, snapshot.getNearbyStations().size());
+        assertEquals(ObservationSnapshot.MAX_POSITIONED_OBSERVATIONS, snapshot.getNearbyContainers().size());
+        assertEquals(ObservationSnapshot.MAX_POSITIONED_OBSERVATIONS, snapshot.getNearbyHazards().size());
+        assertTrue(snapshot.getInventorySummary().length() <= ObservationSnapshot.MAX_FIELD_LENGTH);
+        assertTrue(snapshot.toPromptContext().length() <= ObservationSnapshot.MAX_PROMPT_CONTEXT_LENGTH);
+        assertThrows(UnsupportedOperationException.class,
+            () -> snapshot.getNearbyResources().add("mutated"));
+    }
+
+    @Test
+    public void promptIncludesPositionedObservationSections() {
+        ObservationSnapshot snapshot = new ObservationSnapshot.Builder()
+            .nearbyResources(List.of("iron_ore@[11,63,20]"))
+            .nearbyStations(List.of("crafting_table@[12,64,20]"))
+            .nearbyContainers(List.of("chest@[13,64,20]"))
+            .nearbyHazards(List.of("lava@[14,63,20]"))
+            .build();
+
+        String prompt = snapshot.toPromptContext();
+
+        assertTrue(prompt.contains("Nearby resources: iron_ore@[11,63,20]"));
+        assertTrue(prompt.contains("Nearby stations: crafting_table@[12,64,20]"));
+        assertTrue(prompt.contains("Nearby containers: chest@[13,64,20]"));
+        assertTrue(prompt.contains("Nearby hazards: lava@[14,63,20]"));
+    }
+
+    @Test
+    public void worldKnowledgeClampsSamplingAndExposesBoundedPositionCategories() {
+        com.steve.ai.memory.WorldKnowledge knowledge =
+            new com.steve.ai.memory.WorldKnowledge(null, 10_000, 10_000_000);
+
+        assertEquals(32, knowledge.getScanRadius());
+        assertEquals(2_048, knowledge.getMaxBlockSamples());
+        assertTrue(knowledge.getNearbyBlockPositions().isEmpty());
+        assertTrue(knowledge.getNearbyResourcePositions().isEmpty());
+        assertTrue(knowledge.getNearbyStationPositions().isEmpty());
+        assertTrue(knowledge.getNearbyContainerPositions().isEmpty());
+        assertTrue(knowledge.getNearbyHazardPositions().isEmpty());
+        assertTrue(com.steve.ai.memory.WorldKnowledge.isResourceName("iron_ore"));
+        assertTrue(com.steve.ai.memory.WorldKnowledge.isStationName("crafting_table"));
+        assertTrue(com.steve.ai.memory.WorldKnowledge.isContainerName("chest"));
+        assertTrue(com.steve.ai.memory.WorldKnowledge.isHazardName("lava"));
+        assertFalse(com.steve.ai.memory.WorldKnowledge.canSample(null, new net.minecraft.core.BlockPos(0, 64, 0)));
+    }
 }

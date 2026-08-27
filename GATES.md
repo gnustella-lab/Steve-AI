@@ -1,91 +1,69 @@
-# Steve AI Autonomy Completion Gates
+# Steve AI Autonomy Hardening Gates
 
-This ledger records the final verification snapshot for the persistent autonomy refactor.
+Snapshot baseline: `04fbd543365f522e68e8a0ca0e9cd7f72f9d35da` on `main`.
 
-## Baseline and audit
+- [x] G1: Current `main` was audited before production edits, with live code separated from stale documentation claims.
+  EVIDENCE: `docs/CURRENT_MAIN_AUTONOMY_AUDIT.md`; baseline JUnit 132/132 and GameTest 15/15 passed.
 
-- [x] G1. Initial worktree, HEAD, Java 17, Gradle wrapper, and pre-existing untracked `graphify-out/` recorded.
-  - EVIDENCE: baseline commit `95c8d2376f63dfe4b0cf4f07d8baa32f12dd8e61`; Java `17.0.19`; `./gradlew` executable; initial `./gradlew test --rerun-tasks` passed.
-- [x] G2. Requested core classes, actions, plugins, permissions, persistence, and tests audited against `src/main`.
-  - EVIDENCE: `docs/INITIAL_IMPLEMENTATION_AUDIT.md` and `ANALYSIS_MATRIX.md`.
-- [x] G3. Implemented, partial, dead, and disconnected documented features classified objectively.
-  - EVIDENCE: baseline matrix and action catalogue in `docs/INITIAL_IMPLEMENTATION_AUDIT.md`.
+- [ ] G2: Goal lifecycle, configured budgets, priorities, progress evidence, queue semantics, and bounded legacy-safe NBT are authoritative.
+  CHECK: ./gradlew test --tests 'com.steve.ai.autonomy.*' --rerun-tasks
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-## Foundation
+- [ ] G3: Plan/PlanStep retain revision, step attempts/results, bounded completed-step history, and a restart-safe checkpoint without resuming BaseAction.
+  CHECK: ./gradlew test --tests 'com.steve.ai.planning.*' --tests 'com.steve.ai.memory.*' --rerun-tasks
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-- [x] G4. Persistent `AgentGoal`, queue, lifecycle/status, constraints, provenance, budgets, metadata, and bounded NBT exist.
-  - EVIDENCE: `src/main/java/com/steve/ai/autonomy/` and `AgentGoalTest`.
-- [x] G5. `Plan` and `PlanStep` own horizon progress without making `ActionExecutor` the cognitive source of truth.
-  - EVIDENCE: `PlanStep`, `Plan`, `ActionExecutor.acceptAutonomousPlan`, `PlanStepTest`.
-- [x] G6. Immutable bounded `ObservationSnapshot` and scheduled observation service exist.
-  - EVIDENCE: `ObservationSnapshot`, `ObservationService`, bounded `WorldKnowledge` sampling, `ObservationSnapshotTest`.
-- [x] G7. Episodic, spatial, failure, and goal memory are bounded and persist through NBT.
-  - EVIDENCE: `SteveMemory`, `WorldFact`, `EpisodicMemoryEntry`, `StructuredMemoryTest`.
+- [ ] G4: Observation and memory expose compact relevant positions/stations/hazards, enforce TTL/bounds, and persist per-agent autonomy mode.
+  CHECK: ./gradlew test --tests 'com.steve.ai.perception.*' --tests 'com.steve.ai.memory.*' --rerun-tasks
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-## Executive loop
+- [ ] G5: Strict LLM decisions reject malformed/oversized/inconsistent output, preserve dynamic cache safety, use provider fallback/backoff, and never request or emit private reasoning.
+  CHECK: ./gradlew test --tests 'com.steve.ai.llm.*' --rerun-tasks
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-- [x] G8. Separate tick-driven executive handles observation, planning, action, evaluation, recovery, and reflection without blocking HTTP.
-  - EVIDENCE: `AutonomyController`; final Forge GameTest log shows `OBSERVING -> PLANNING -> EXECUTING -> EVALUATING -> COMPLETED -> IDLE`.
-- [x] G9. State machine exposes explicit testable loop/recovery states.
-  - EVIDENCE: expanded `AgentState`, transition matrix, `AgentStateMachineTest`.
-- [x] G10. Receding horizon and no duplicate in-flight planning exist.
-  - EVIDENCE: `PlanningContext`, `AutonomyPlanner`, `maxPlanHorizon`, `planningFuture` guard, fake planner tests.
-- [x] G11. Deterministic goal verification rejects unsupported completion claims.
-  - EVIDENCE: `GoalEvaluator`, `GoalEvaluatorTest`, `ResponseParser` completion path.
-- [x] G12. User interrupt, stop, pause/resume/cancel semantics exist.
-  - EVIDENCE: `AutonomyController.stop`, `pause`, `resume`, `/steve stop`, `/steve pause`, `/steve resume`.
+- [ ] G6: Action results expose bounded progress, missing prerequisites, delivery evidence, and denied target positions; deterministic recovery precedes LLM replanning and cannot crash on missing observations.
+  CHECK: ./gradlew test --tests 'com.steve.ai.action.*' --tests 'com.steve.ai.autonomy.Recovery*' --rerun-tasks
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-## Recovery and safety
+- [ ] G7: Crafting, smelting, tool replacement, inventory recovery, and bounded resource search compose through executive-visible goals without hidden high-level nested actions.
+  EVIDENCE: pending
 
-- [x] G13. Deterministic recovery covers pathing, resources, tools, inventory, protected areas, entities, players, chunks, and validation.
-  - EVIDENCE: `RecoveryEngine`, structured action errors, protected-region GameTest.
-- [x] G14. Failure fingerprints and bounded retry/replan/block behavior exist.
-  - EVIDENCE: `FailureFingerprint`, `FailureTracker`, `RecoveryEngineTest`, goal budgets.
-- [x] G15. Permissions remain authoritative and no bypass path was added.
-  - EVIDENCE: action descriptors, `PermissionManager`, origin guardrails, protected placement GameTest.
-- [x] G16. Async result consumption and world mutations remain separated by the server tick.
-  - EVIDENCE: `TaskPlanner.plan` returns parsed data; `AutonomyController.tick` and `ActionExecutor.tick` apply runtime state.
+- [ ] G8: Permissions remain authoritative at mutation time, protected containers/blocks are avoided, gathering cannot place free blocks, chunks fail closed, and no command/script/reflection bypass exists.
+  EVIDENCE: pending
 
-## Planning and gameplay integration
+- [ ] G9: Interrupt, queue, pause, resume, cancel, absolute stop, stale-future invalidation, OFF, GOAL_DRIVEN, and PROACTIVE semantics are explicit and tested.
+  EVIDENCE: pending
 
-- [x] G17. Stable bounded planning context and strict operational response schema exist.
-  - EVIDENCE: `PlanningContext`, `PromptBuilder`, `ResponseParser`, `AutonomousResponseSchemaTest`, `PlanningContextPromptTest`.
-- [x] G18. Crafting/smelting prerequisites are executive-visible.
-  - EVIDENCE: `CraftItemAction` and `SmeltItemAction` missing-resource observations, deterministic prerequisite planning, Forge crafting/smelting GameTests.
-- [x] G19. Bounded pathfinding-aware resource search exists and records observations.
-  - EVIDENCE: `SearchResourceAction`, descriptor/schema, `WorldFact` integration.
-- [x] G20. Registry, descriptor, schemas, permissions, prompt exposure, and tests remain aligned.
-  - EVIDENCE: 19 actions registered in the final GameTest log; `CoreActionsPluginTest`, `TaskValidatorTest`.
+- [ ] G10: Production-path integration proves failure -> deterministic recovery -> new observation -> replan -> success without another user command.
+  EVIDENCE: pending
 
-## Configuration and observability
+- [ ] G11: Forge GameTests cover autonomous item acquisition from prerequisites, protected replanning, restart replanning, absolute stop, malformed planner output, and no unauthorized mutation.
+  CHECK: ./gradlew runGameTestServer --stacktrace
+  EXPECT: All /[0-9]+/ required tests passed
+  EVIDENCE: pending
 
-- [x] G21. `AutonomyMode` and autonomy budgets/cooldowns are configured with safe defaults.
-  - EVIDENCE: `SteveConfig`, `config/steve-common.toml.example`, README configuration section.
-- [x] G22. Status and command diagnostics exist without secrets or chain-of-thought.
-  - EVIDENCE: `/steve status <name>`, `AutonomyController.getStatusSummary`, bounded feedback.
-- [x] G23. Legacy names, owner UUIDs, plugins, inventory, collaboration, and OFF mode remain compatible.
-  - EVIDENCE: compatibility constructors/APIs preserved; full JUnit and Forge GameTests pass.
+- [ ] G12: Commands/status expose mode, state, primary goal, subgoal, plan revision, action, queue, failure, budgets, memory counts, and provider health without secrets.
+  EVIDENCE: pending
 
-## Verification
+- [ ] G13: Documentation and example config match final production behavior and state remaining limitations honestly.
+  EVIDENCE: pending
 
-- [x] G24. Unit tests cover goal lifecycle/priority/persistence, plan steps, memory bounds, parser, evaluator, recovery, loops, and state transitions.
-  - EVIDENCE: final XML reports `tests=127 failures=0 errors=0 skipped=0`.
-- [x] G25. Fake planner and Forge integration flows cover failure, replan, protected region, crafting, smelting, pause safety, and success.
-  - EVIDENCE: `AutonomyIntegrationSimulationTest`, pause-while-planning GameTest; final Forge GameTest log reports all 15 required tests passed, including protected recovery and the autonomous iron goal.
-- [x] G26. `./gradlew test --rerun-tasks` passes on the final source tree.
-  - EVIDENCE: `BUILD SUCCESSFUL in 37s` after the final source snapshot.
-- [x] G27. `./gradlew clean build` passes with Java 17 and release verification.
-  - EVIDENCE: `BUILD SUCCESSFUL in 49s`; 13 actionable tasks; `verifyReleaseJar` passed.
-- [x] G28. `git diff --check` passes and required artifact entries exist.
-  - EVIDENCE: `git diff --check` exit code 0; release JAR contains 225 entries, `AutonomyController.class`, `SearchResourceAction.class`, `mods.toml`, service SPI, and Jar-in-Jar metadata.
-- [x] G29. Documentation matches the current implementation and limitations.
-  - EVIDENCE: updated `README.md`, `ANALYSIS_MATRIX.md`, `TECHNICAL_DEEP_DIVE.md`, `docs/PHASE1_IMPLEMENTATION.md`, config example, and initial audit.
-- [x] G30. Final graph and worktree checks completed after the last source changes.
-  - EVIDENCE: `graphify update .` rebuilt 2,325 nodes and 5,727 edges in 130 communities; final status/diff check captured after build and GameTest.
+- [ ] G14: Final JUnit suite passes from the final source snapshot.
+  CHECK: ./gradlew test --rerun-tasks --stacktrace
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-## Final artifact
+- [ ] G15: Final clean production build and release-JAR verification pass with Java 17/Gradle 8.4.
+  CHECK: ./gradlew clean build --stacktrace
+  EXPECT: BUILD SUCCESSFUL
+  EVIDENCE: pending
 
-- Release artifact: `build/libs/steve-ai-mod-1.5.1.jar`
-- SHA-256: `818dc8ddfb0a04c0d6ddd591e4caf7ea03f221ae21c722087248af37bf38be75`
-- Final Forge GameTest result: `All 15 required tests passed :)`
-- Final JUnit result: `127 tests, 0 failures, 0 errors, 0 skipped`
+- [ ] G16: Final repository hygiene, graph update, JAR contents, and measured test/artifact totals are recorded.
+  CHECK: git diff --check
+  EXPECT: /^$/
+  EVIDENCE: pending

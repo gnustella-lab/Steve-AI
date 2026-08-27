@@ -30,7 +30,6 @@ class ResponseParserTest {
         String response = """
             ```json
             {
-              "reasoning": "compare } { literally",
               "plan": "Keep the original text",
               "tasks": [
                 {
@@ -45,7 +44,7 @@ class ResponseParserTest {
         ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(response);
 
         assertNotNull(parsed);
-        assertEquals("compare } { literally", parsed.getReasoning());
+        assertEquals("", parsed.getReasoning());
         assertEquals("Keep the original text", parsed.getPlan());
         assertEquals(1, parsed.getTasks().size());
         Task task = parsed.getTasks().get(0);
@@ -81,6 +80,31 @@ class ResponseParserTest {
         assertNull(ResponseParser.parseAIResponse(
             "{\"summary\":\"safe\",\"tasks\":[{\"action\":\"mine\",\"parameters\":{},"
                 + "\"command\":\"/op Steve\"}]}"));
+    }
+
+    @Test
+    void rejectsPrivateReasoningAndAnySurroundingProse() {
+        assertNull(ResponseParser.parseAIResponse(
+            "Here is the plan: {\"summary\":\"safe\",\"tasks\":["
+                + "{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":1}}]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"summary\":\"safe\",\"tasks\":["
+                + "{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":1}}]} trailing"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"reasoning\":\"private\",\"summary\":\"safe\",\"tasks\":[]}"));
+        assertNull(ResponseParser.parseAIResponse("`````"));
+    }
+
+    @Test
+    void acceptsOnlyOneCompleteFenceAroundOneJsonObject() {
+        String fenced = "```json\n{\"summary\":\"safe\",\"tasks\":["
+            + "{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":1}}]}\n```";
+
+        ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(fenced);
+
+        assertNotNull(parsed);
+        assertEquals("safe", parsed.getSummary());
+        assertNull(ResponseParser.parseAIResponse("```json\n{}\n```\n```json\n{}\n```"));
     }
 
     @Test

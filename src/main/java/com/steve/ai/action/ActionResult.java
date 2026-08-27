@@ -1,6 +1,5 @@
 package com.steve.ai.action;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -43,9 +42,9 @@ public final class ActionResult {
         this.partialSuccess = builder.partialSuccess;
         this.retryable = builder.retryable;
         this.requiresReplanning = builder.requiresReplanning;
-        this.errorCode = builder.errorCode;
-        this.message = Objects.requireNonNull(builder.message, "message");
-        this.observations = Collections.unmodifiableMap(new LinkedHashMap<>(builder.observations));
+        this.errorCode = builder.errorCode == null ? null : BoundedData.boundedString(builder.errorCode);
+        this.message = BoundedData.boundedString(Objects.requireNonNull(builder.message, "message"));
+        this.observations = BoundedData.copyMap(builder.observations);
     }
 
     public boolean isSuccess() {
@@ -172,14 +171,28 @@ public final class ActionResult {
         }
 
         public Builder observation(String key, Object value) {
-            this.observations.put(key, value);
+            if (key == null || key.isBlank()) {
+                return this;
+            }
+            if (value == null) {
+                this.observations.remove(key);
+            } else if (this.observations.size() < BoundedData.MAX_ENTRIES
+                    || this.observations.containsKey(key)) {
+                this.observations.put(BoundedData.boundedString(key), BoundedData.copyValue(value));
+            }
             return this;
         }
 
         public Builder observations(Map<String, Object> observations) {
             this.observations.clear();
             if (observations != null) {
-                this.observations.putAll(observations);
+                int count = 0;
+                for (Map.Entry<String, Object> entry : observations.entrySet()) {
+                    if (count++ >= BoundedData.MAX_ENTRIES) {
+                        break;
+                    }
+                    observation(entry.getKey(), entry.getValue());
+                }
             }
             return this;
         }

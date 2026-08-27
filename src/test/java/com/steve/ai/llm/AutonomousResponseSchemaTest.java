@@ -37,12 +37,35 @@ class AutonomousResponseSchemaTest {
     }
 
     @Test
-    void rejectsUnknownDecisionAndHorizonOverflow() {
+    void enforcesDecisionTaskAndGoalStatusConsistency() {
+        String task = "{\"action\":\"inspect_inventory\",\"parameters\":{}}";
+
         assertNull(ResponseParser.parseAIResponse(
-            "{\"decision\":\"think_private\",\"summary\":\"x\",\"goalStatus\":\"in_progress\",\"tasks\":[]}"));
+            "{\"decision\":\"act\",\"summary\":\"x\",\"goalStatus\":\"in_progress\",\"tasks\":[]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"decision\":\"blocked\",\"summary\":\"x\",\"goalStatus\":\"blocked\",\"tasks\":["
+                + task + "]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"decision\":\"ask_user\",\"summary\":\"x\",\"goalStatus\":\"paused\",\"tasks\":["
+                + task + "]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"decision\":\"complete\",\"summary\":\"x\",\"goalStatus\":\"in_progress\",\"tasks\":[]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"decision\":\"act\",\"summary\":\"x\",\"goalStatus\":\"complete\",\"tasks\":["
+                + task + "]}"));
+    }
+
+    @Test
+    void rejectsGiantHorizonsAndNonFiniteParameterNumbers() {
+        String tasks = java.util.stream.IntStream.range(0, 17)
+            .mapToObj(index -> "{\"action\":\"inspect_inventory\",\"parameters\":{}}")
+            .collect(java.util.stream.Collectors.joining(","));
+
         assertNull(ResponseParser.parseAIResponse(
             "{\"decision\":\"act\",\"summary\":\"x\",\"goalStatus\":\"in_progress\",\"tasks\":["
-                + "{\"action\":\"inspect_inventory\",\"parameters\":{}},"
-                + "{\"action\":\"inspect_inventory\",\"parameters\":{}}]}" , 1));
+                + tasks + "]}"));
+        assertNull(ResponseParser.parseAIResponse(
+            "{\"decision\":\"act\",\"summary\":\"x\",\"goalStatus\":\"in_progress\",\"tasks\":["
+                + "{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":1e999}}]}"));
     }
 }

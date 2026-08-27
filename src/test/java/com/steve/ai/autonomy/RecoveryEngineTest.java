@@ -6,7 +6,6 @@ import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,5 +60,28 @@ class RecoveryEngineTest {
 
         assertEquals(RecoveryDecision.Kind.REPLAN, decision.kind());
         assertTrue(decision.reason().contains("protected"));
+    }
+
+    @Test
+    void protectedFailureHonorsReplanBudgetAndFingerprint() {
+        AgentGoal exhausted = AgentGoal.create("Build here", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L, GoalBudget.fromConfiguredLimits(3, 0, 12, 5, 2));
+        Task place = new Task("place", Map.of("block", "stone", "x", 1, "y", 64, "z", 1));
+        ActionResult failure = ActionResult.failure(ActionResult.ERROR_PROTECTED, "protected")
+            .requiresReplanning(true).build();
+
+        RecoveryDecision budgeted = new RecoveryEngine().decide(exhausted, place, failure,
+            new FailureTracker(2), new BlockPos(1, 64, 1));
+        assertEquals(RecoveryDecision.Kind.BLOCKED, budgeted.kind());
+
+        AgentGoal repeating = AgentGoal.create("Build here", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        FailureTracker tracker = new FailureTracker(2);
+        RecoveryEngine engine = new RecoveryEngine();
+        engine.decide(repeating, place, failure, tracker, new BlockPos(1, 64, 1));
+        engine.decide(repeating, place, failure, tracker, new BlockPos(1, 64, 1));
+        RecoveryDecision third = engine.decide(repeating, place, failure, tracker,
+            new BlockPos(1, 64, 1));
+        assertEquals(RecoveryDecision.Kind.BLOCKED, third.kind());
     }
 }

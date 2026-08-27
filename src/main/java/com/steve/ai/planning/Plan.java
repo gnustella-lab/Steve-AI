@@ -19,8 +19,66 @@ import java.util.UUID;
  * A bounded planning horizon. The plan owns step progress, while ActionExecutor only runs a step.
  */
 public final class Plan {
+    public static final int DATA_VERSION = 2;
+    public static final int MAX_STEPS = 64;
+    public static final int MAX_COMPLETED_STEP_SUMMARIES = 32;
+    public static final int MAX_COUNTER = 1_000_000;
+    private static final int MAX_COMMAND_LENGTH = 512;
+    private static final int MAX_SUMMARY_LENGTH = 256;
+    private static final int MAX_REASON_LENGTH = 256;
+    private static final int MAX_PARAMETERS_JSON_LENGTH = 4_096;
+
     public enum State {
         CREATED, PLANNING, EXECUTING, PAUSED, COMPLETED, FAILED, CANCELLED
+    }
+
+    /** Compact terminal-step diagnostic retained when a horizon is replaced. */
+    public static final class CompletedStepSummary {
+        private final UUID stepId;
+        private final String action;
+        private final PlanStep.Status status;
+        private final int attempts;
+        private final boolean success;
+        private final String errorCode;
+        private final String message;
+        private final long updatedAt;
+
+        private CompletedStepSummary(UUID stepId, String action, PlanStep.Status status,
+                int attempts, boolean success, String errorCode, String message, long updatedAt) {
+            this.stepId = stepId;
+            this.action = bounded(action, 128);
+            this.status = status == null ? PlanStep.Status.COMPLETED : status;
+            this.attempts = bounded(attempts);
+            this.success = success;
+            this.errorCode = bounded(errorCode, 64);
+            this.message = bounded(message, MAX_SUMMARY_LENGTH);
+            this.updatedAt = Math.max(0L, updatedAt);
+        }
+
+        private static CompletedStepSummary from(PlanStep step) {
+            ActionResult result = step.getLastResult();
+            return new CompletedStepSummary(step.getStepId(), step.getTask().getAction(),
+                step.getStatus(), step.getAttempts(), result != null && result.isSuccess(),
+                result == null ? null : result.getErrorCode(),
+                result == null ? "" : result.getMessage(), step.getUpdatedAt());
+        }
+
+        public UUID getStepId() { return stepId; }
+        public String getAction() { return action; }
+        public PlanStep.Status getStatus() { return status; }
+        public int getAttempts() { return attempts; }
+        public boolean isSuccess() { return success; }
+        public String getErrorCode() { return errorCode; }
+        public String getMessage() { return message; }
+        public long getUpdatedAt() { return updatedAt; }
+        public UUID stepId() { return stepId; }
+        public String action() { return action; }
+        public PlanStep.Status status() { return status; }
+        public int attempts() { return attempts; }
+        public boolean success() { return success; }
+        public String errorCode() { return errorCode; }
+        public String message() { return message; }
+        public long updatedAt() { return updatedAt; }
     }
 
     private static final Gson GSON = new Gson();
@@ -33,6 +91,7 @@ public final class Plan {
     private final UUID steveUuid;
     private State state;
     private final List<PlanStep> steps;
+    private final List<CompletedStepSummary> completedStepSummaries;
     private int currentTaskIndex;
     private int attemptCount;
     private int replanCount;
@@ -61,26 +120,36 @@ public final class Plan {
             maxRetries, maxReplans, maxLLMCalls, timeoutTicks, createdAtTick);
     }
 
+    /** Rehydrates or continues a known plan identity without creating a second authority. */
+    public Plan(UUID planId, UUID goalId, String originalCommand, UUID requestingPlayer,
+            UUID steveUuid, int maxRetries, int maxReplans, int maxLLMCalls,
+            int timeoutTicks, long createdAtTick) {
+        this(planId, goalId, originalCommand, requestingPlayer, steveUuid,
+            maxRetries, maxReplans, maxLLMCalls, timeoutTicks, createdAtTick, true);
+    }
+
     private Plan(UUID planId, UUID goalId, String originalCommand, UUID requestingPlayer, UUID steveUuid,
-            int maxRetries, int maxReplans, int maxLLMCalls, int timeoutTicks, long createdAtTick) {
-        this.planId = planId;
+            int maxRetries, int maxReplans, int maxLLMCalls, int timeoutTicks, long createdAtTick,
+            boolean ignored) {
+        this.planId = planId == null ? UUID.randomUUID() : planId;
         this.goalId = goalId;
-        this.originalCommand = bounded(originalCommand, 512);
+        this.originalCommand = bounded(originalCommand, MAX_COMMAND_LENGTH);
         this.requestingPlayer = requestingPlayer;
         this.steveUuid = steveUuid;
         this.state = State.CREATED;
         this.steps = new ArrayList<>();
+        this.completedStepSummaries = new ArrayList<>();
         this.currentTaskIndex = 0;
         this.attemptCount = 0;
         this.replanCount = 0;
         this.llmCallCount = 0;
         this.revision = 0;
-        this.createdAtTick = createdAtTick;
-        this.lastProgressTick = createdAtTick;
-        this.maxRetries = Math.max(0, maxRetries);
-        this.maxReplans = Math.max(0, maxReplans);
-        this.maxLLMCalls = Math.max(0, maxLLMCalls);
-        this.timeoutTicks = Math.max(0, timeoutTicks);
+        this.createdAtTick = Math.max(0L, createdAtTick);
+        this.lastProgressTick = this.createdAtTick;
+        this.maxRetries = bounded(maxRetries, 0, 256);
+        this.maxReplans = bounded(maxReplans, 0, 256);
+        this.maxLLMCalls = bounded(maxLLMCalls, 0, 512);
+        this.timeoutTicks = bounded(timeoutTicks, 0, 7_200_000);
     }
 
     public UUID getPlanId() { return planId; }
@@ -89,10 +158,13 @@ public final class Plan {
     public UUID getRequestingPlayer() { return requestingPlayer; }
     public UUID getSteveUuid() { return steveUuid; }
     public State getState() { return state; }
-    public List<Task> getTasks() {
-        return steps.stream().map(PlanStep::getTask).toList();
-    }
+    public List<Task> getTasks() { return steps.stream().map(PlanStep::getTask).toList(); }
     public List<PlanStep> getSteps() { return Collections.unmodifiableList(steps); }
+    public List<CompletedStepSummary> getCompletedStepSummaries() {
+        return Collections.unmodifiableList(new ArrayList<>(completedStepSummaries));
+    }
+    public List<CompletedStepSummary> getArchivedCompletedSteps() { return getCompletedStepSummaries(); }
+    public List<CompletedStepSummary> getArchivedStepSummaries() { return getCompletedStepSummaries(); }
     public int getCurrentTaskIndex() { return currentTaskIndex; }
     public int getAttemptCount() { return attemptCount; }
     public int getReplanCount() { return replanCount; }
@@ -105,26 +177,27 @@ public final class Plan {
     public String getReplanReason() { return replanReason; }
 
     public void loadTasks(List<Task> newTasks, String newSummary) {
+        archiveCompletedSteps();
         steps.clear();
-        if (newTasks != null) newTasks.stream().limit(64).map(PlanStep::new).forEach(steps::add);
-        summary = bounded(newSummary, 256);
+        if (newTasks != null) {
+            newTasks.stream().limit(MAX_STEPS).map(PlanStep::new).forEach(steps::add);
+        }
+        summary = bounded(newSummary, MAX_SUMMARY_LENGTH);
         currentTaskIndex = 0;
         attemptCount = 0;
-        revision++;
+        revision = increment(revision);
     }
 
     public void loadHorizon(List<Task> newTasks, String newSummary, String reason, long tick) {
         loadTasks(newTasks, newSummary);
-        replanReason = bounded(reason, 256);
-        lastProgressTick = Math.max(lastProgressTick, tick);
+        replanReason = bounded(reason, MAX_REASON_LENGTH);
+        lastProgressTick = Math.max(lastProgressTick, Math.max(0L, tick));
         state = State.EXECUTING;
     }
 
     public Task getCurrentTask() {
-        if (currentTaskIndex >= 0 && currentTaskIndex < steps.size()) {
-            return steps.get(currentTaskIndex).getTask();
-        }
-        return null;
+        PlanStep step = getCurrentStep();
+        return step == null ? null : step.getTask();
     }
 
     public PlanStep getCurrentStep() {
@@ -133,11 +206,16 @@ public final class Plan {
     }
 
     public void markCurrentStepActive() {
+        markCurrentStepActive(lastProgressTick);
+    }
+
+    public void markCurrentStepActive(long tick) {
         PlanStep step = getCurrentStep();
         if (step != null) {
-            step.markActive();
-            step.incrementAttempt();
+            step.markActive(tick);
+            step.incrementAttempt(tick);
             attemptCount = step.getAttempts();
+            lastProgressTick = Math.max(lastProgressTick, Math.max(0L, tick));
         }
     }
 
@@ -146,29 +224,41 @@ public final class Plan {
         if (step != null) {
             step.complete(result, currentTick);
             attemptCount = step.getAttempts();
+            lastProgressTick = Math.max(lastProgressTick, Math.max(0L, currentTick));
         }
     }
 
     public void advanceToNextTask(long currentTick) {
         PlanStep step = getCurrentStep();
-        if (step != null && step.getStatus() != PlanStep.Status.COMPLETED) {
+        if (step != null && (step.getStatus() == PlanStep.Status.PENDING
+                || step.getStatus() == PlanStep.Status.ACTIVE)) {
             step.complete(ActionResult.success("step completed").build(), currentTick);
         }
-        currentTaskIndex++;
+        currentTaskIndex = Math.min(MAX_STEPS, currentTaskIndex + 1);
         attemptCount = 0;
-        lastProgressTick = currentTick;
+        lastProgressTick = Math.max(lastProgressTick, Math.max(0L, currentTick));
         if (currentTaskIndex >= steps.size()) setState(State.COMPLETED);
     }
 
-    public void incrementAttempt() { attemptCount++; }
+    public void incrementAttempt() {
+        attemptCount = increment(attemptCount);
+    }
+
     public boolean canRetry() { return attemptCount < maxRetries; }
-    public void incrementReplan() { replanCount++; revision++; }
+
+    public void incrementReplan() {
+        replanCount = increment(replanCount);
+        revision = increment(revision);
+    }
+
     public boolean canReplan() { return replanCount < maxReplans; }
-    public void incrementLLMCall() { llmCallCount++; }
+
+    public void incrementLLMCall() { llmCallCount = increment(llmCallCount); }
     public boolean canCallLLM() { return llmCallCount < maxLLMCalls; }
 
     public boolean isTimedOut(long currentTick) {
-        return timeoutTicks > 0 && currentTick - lastProgressTick > timeoutTicks;
+        return timeoutTicks > 0 && currentTick >= lastProgressTick
+            && currentTick - lastProgressTick > timeoutTicks;
     }
 
     public String getProgress() { return currentTaskIndex + "/" + steps.size() + " tasks"; }
@@ -184,19 +274,20 @@ public final class Plan {
     }
 
     public void setFailureReason(String reason) {
-        failureReason = bounded(reason, 256);
+        failureReason = bounded(reason, MAX_REASON_LENGTH);
         setState(State.FAILED);
     }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
+        tag.putInt("DataVersion", DATA_VERSION);
         tag.putUUID("PlanId", planId);
         if (goalId != null) tag.putUUID("GoalId", goalId);
         tag.putString("OriginalCommand", originalCommand);
         if (requestingPlayer != null) tag.putUUID("RequestingPlayer", requestingPlayer);
         if (steveUuid != null) tag.putUUID("SteveUuid", steveUuid);
         tag.putString("State", state.name());
-        tag.putInt("CurrentTaskIndex", currentTaskIndex);
+        tag.putInt("CurrentTaskIndex", Math.max(0, Math.min(currentTaskIndex, steps.size())));
         tag.putInt("AttemptCount", attemptCount);
         tag.putInt("ReplanCount", replanCount);
         tag.putInt("LlmCallCount", llmCallCount);
@@ -212,15 +303,20 @@ public final class Plan {
         if (replanReason != null) tag.putString("ReplanReason", replanReason);
 
         ListTag stepList = new ListTag();
-        steps.stream().limit(64).forEach(step -> stepList.add(step.save()));
+        steps.stream().limit(MAX_STEPS).forEach(step -> stepList.add(step.save()));
         tag.put("Steps", stepList);
+
+        ListTag archive = new ListTag();
+        completedStepSummaries.stream().limit(MAX_COMPLETED_STEP_SUMMARIES)
+            .forEach(summary -> archive.add(saveSummary(summary)));
+        tag.put("CompletedStepSummaries", archive);
 
         // Keep a simple task list for saves written by the previous Plan implementation.
         ListTag taskList = new ListTag();
-        for (PlanStep step : steps) {
+        for (PlanStep step : steps.stream().limit(MAX_STEPS).toList()) {
             CompoundTag taskTag = new CompoundTag();
-            taskTag.putString("Action", step.getTask().getAction());
-            taskTag.putString("Parameters", GSON.toJson(step.getTask().getParameters()));
+            taskTag.putString("Action", bounded(step.getTask().getAction(), 128));
+            taskTag.putString("Parameters", boundedJson(GSON.toJson(step.getTask().getParameters())));
             taskList.add(taskTag);
         }
         tag.put("Tasks", taskList);
@@ -228,6 +324,9 @@ public final class Plan {
     }
 
     public static Plan load(CompoundTag tag) {
+        if (tag == null || tag.isEmpty()) {
+            return new Plan("Restored plan", null, null, 3, 8, 12, 0, 0L);
+        }
         UUID planId = tag.hasUUID("PlanId") ? tag.getUUID("PlanId")
             : tag.hasUUID("planId") ? tag.getUUID("planId") : UUID.randomUUID();
         UUID goalId = tag.hasUUID("GoalId") ? tag.getUUID("GoalId") : null;
@@ -245,31 +344,44 @@ public final class Plan {
             readLong(tag, "CreatedAtTick", "createdAtTick", 0L));
 
         plan.state = readState(tag.contains("State") ? tag.getString("State") : tag.getString("state"));
-        plan.currentTaskIndex = Math.max(0, readInt(tag, "CurrentTaskIndex", "currentTaskIndex", 0));
-        plan.attemptCount = Math.max(0, readInt(tag, "AttemptCount", "attemptCount", 0));
-        plan.replanCount = Math.max(0, readInt(tag, "ReplanCount", "replanCount", 0));
-        plan.llmCallCount = Math.max(0, readInt(tag, "LlmCallCount", "llmCallCount", 0));
-        plan.revision = Math.max(0, tag.getInt("Revision"));
-        plan.lastProgressTick = readLong(tag, "LastProgressTick", "lastProgressTick", plan.createdAtTick);
-        plan.failureReason = tag.contains("FailureReason") ? tag.getString("FailureReason") : tag.getString("failureReason");
-        plan.summary = tag.contains("Summary") ? tag.getString("Summary") : tag.getString("summary");
-        plan.replanReason = tag.contains("ReplanReason") ? tag.getString("ReplanReason") : null;
+        plan.currentTaskIndex = bounded(readInt(tag, "CurrentTaskIndex", "currentTaskIndex", 0));
+        plan.attemptCount = bounded(readInt(tag, "AttemptCount", "attemptCount", 0));
+        plan.replanCount = bounded(readInt(tag, "ReplanCount", "replanCount", 0));
+        plan.llmCallCount = bounded(readInt(tag, "LlmCallCount", "llmCallCount", 0));
+        plan.revision = bounded(tag.getInt("Revision"));
+        plan.lastProgressTick = Math.max(plan.createdAtTick,
+            readLong(tag, "LastProgressTick", "lastProgressTick", plan.createdAtTick));
+        plan.failureReason = tag.contains("FailureReason")
+            ? bounded(tag.getString("FailureReason"), MAX_REASON_LENGTH) : null;
+        plan.summary = tag.contains("Summary")
+            ? bounded(tag.getString("Summary"), MAX_SUMMARY_LENGTH) : null;
+        plan.replanReason = tag.contains("ReplanReason")
+            ? bounded(tag.getString("ReplanReason"), MAX_REASON_LENGTH) : null;
 
+        if (tag.contains("CompletedStepSummaries", Tag.TAG_LIST)) {
+            ListTag list = tag.getList("CompletedStepSummaries", Tag.TAG_COMPOUND);
+            for (int i = 0; i < Math.min(MAX_COMPLETED_STEP_SUMMARIES, list.size()); i++) {
+                plan.completedStepSummaries.add(loadSummary(list.getCompound(i)));
+            }
+        }
         if (tag.contains("Steps", Tag.TAG_LIST)) {
             ListTag list = tag.getList("Steps", Tag.TAG_COMPOUND);
-            for (int i = 0; i < Math.min(64, list.size()); i++) plan.steps.add(PlanStep.load(list.getCompound(i)));
+            for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
+                plan.steps.add(PlanStep.load(list.getCompound(i)));
+            }
         } else if (tag.contains("tasks", Tag.TAG_LIST)) {
             ListTag list = tag.getList("tasks", Tag.TAG_COMPOUND);
-            for (int i = 0; i < Math.min(64, list.size()); i++) {
+            for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
                 CompoundTag item = list.getCompound(i);
-                Map<String, Object> params = parseMap(item.getString("parameters"));
-                plan.steps.add(new PlanStep(new Task(item.getString("action"), params)));
+                plan.steps.add(new PlanStep(new Task(bounded(item.getString("action"), 128),
+                    parseMap(item.getString("parameters")))));
             }
         } else if (tag.contains("Tasks", Tag.TAG_LIST)) {
             ListTag list = tag.getList("Tasks", Tag.TAG_COMPOUND);
-            for (int i = 0; i < Math.min(64, list.size()); i++) {
+            for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
                 CompoundTag item = list.getCompound(i);
-                plan.steps.add(new PlanStep(new Task(item.getString("Action"), parseMap(item.getString("Parameters")))));
+                plan.steps.add(new PlanStep(new Task(bounded(item.getString("Action"), 128),
+                    parseMap(item.getString("Parameters")))));
             }
         }
         plan.currentTaskIndex = Math.min(plan.currentTaskIndex, plan.steps.size());
@@ -280,7 +392,44 @@ public final class Plan {
         return String.format("Plan[%s]: %s - %s", state, getProgress(), summary != null ? summary : "No summary");
     }
 
+    private void archiveCompletedSteps() {
+        for (PlanStep step : steps) {
+            if (step.getStatus() == PlanStep.Status.COMPLETED) {
+                if (completedStepSummaries.size() >= MAX_COMPLETED_STEP_SUMMARIES) {
+                    completedStepSummaries.remove(0);
+                }
+                completedStepSummaries.add(CompletedStepSummary.from(step));
+            }
+        }
+    }
+
+    private static CompoundTag saveSummary(CompletedStepSummary summary) {
+        CompoundTag tag = new CompoundTag();
+        if (summary.getStepId() != null) tag.putUUID("StepId", summary.getStepId());
+        tag.putString("Action", summary.getAction());
+        tag.putString("Status", summary.getStatus().name());
+        tag.putInt("Attempts", summary.getAttempts());
+        tag.putBoolean("Success", summary.isSuccess());
+        if (summary.getErrorCode() != null) tag.putString("ErrorCode", summary.getErrorCode());
+        tag.putString("Message", summary.getMessage());
+        tag.putLong("UpdatedAt", summary.getUpdatedAt());
+        return tag;
+    }
+
+    private static CompletedStepSummary loadSummary(CompoundTag tag) {
+        return new CompletedStepSummary(
+            tag.hasUUID("StepId") ? tag.getUUID("StepId") : null,
+            tag.getString("Action"),
+            readStepStatus(tag.getString("Status")),
+            tag.getInt("Attempts"),
+            tag.getBoolean("Success"),
+            tag.contains("ErrorCode") ? tag.getString("ErrorCode") : null,
+            tag.getString("Message"),
+            tag.getLong("UpdatedAt"));
+    }
+
     private static Map<String, Object> parseMap(String json) {
+        if (json == null || json.length() > MAX_PARAMETERS_JSON_LENGTH) return Map.of();
         try {
             Map<String, Object> parsed = GSON.fromJson(json, MAP_TYPE);
             return parsed == null ? Map.of() : parsed;
@@ -297,6 +446,14 @@ public final class Plan {
         }
     }
 
+    private static PlanStep.Status readStepStatus(String value) {
+        try {
+            return value == null || value.isBlank() ? PlanStep.Status.COMPLETED : PlanStep.Status.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            return PlanStep.Status.COMPLETED;
+        }
+    }
+
     private static int readInt(CompoundTag tag, String current, String legacy, int fallback) {
         if (tag.contains(current)) return tag.getInt(current);
         return tag.contains(legacy) ? tag.getInt(legacy) : fallback;
@@ -305,6 +462,22 @@ public final class Plan {
     private static long readLong(CompoundTag tag, String current, String legacy, long fallback) {
         if (tag.contains(current)) return tag.getLong(current);
         return tag.contains(legacy) ? tag.getLong(legacy) : fallback;
+    }
+
+    private static int increment(int value) {
+        return value >= MAX_COUNTER ? MAX_COUNTER : Math.max(0, value) + 1;
+    }
+
+    private static int bounded(int value) {
+        return Math.max(0, Math.min(MAX_COUNTER, value));
+    }
+
+    private static int bounded(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static String boundedJson(String value) {
+        return value != null && value.length() <= MAX_PARAMETERS_JSON_LENGTH ? value : "{}";
     }
 
     private static String bounded(String value, int max) {

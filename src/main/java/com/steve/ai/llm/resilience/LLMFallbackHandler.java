@@ -24,19 +24,15 @@ import java.util.regex.Pattern;
  *
  * <p><b>Design Philosophy:</b></p>
  * <ul>
- *   <li>Something is better than nothing - basic functionality continues</li>
- *   <li>Conservative defaults - prefer safe actions (wait) over risky ones</li>
- *   <li>Transparency - responses indicate they're from fallback system</li>
+ *   <li>Fail closed: never invent world mutations while the planner is unavailable</li>
+ *   <li>Only a non-mutating follow action is allowed as a local pattern match</li>
+ *   <li>Every other intent, including mine/build/attack/gather, returns blocked</li>
  * </ul>
  *
  * <p><b>Supported Patterns:</b></p>
  * <ul>
- *   <li><b>mine:</b> Matches "mine", "dig", "collect ore"</li>
- *   <li><b>build:</b> Matches "build", "construct", "create house"</li>
- *   <li><b>attack:</b> Matches "attack", "fight", "kill"</li>
- *   <li><b>follow:</b> Matches "follow", "come", "follow me"</li>
- *   <li><b>move:</b> Matches "go to", "move to", "walk"</li>
- *   <li><b>default:</b> Matches nothing - returns "wait" action</li>
+ *   <li><b>follow:</b> Matches "follow", "come", "follow me" — no world mutation</li>
+ *   <li><b>default:</b> Matches nothing — returns a blocked operational decision</li>
  * </ul>
  *
  * @since 1.1.0
@@ -45,43 +41,27 @@ public class LLMFallbackHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMFallbackHandler.class);
 
-    // Pattern-based fallback responses in JSON format matching ResponseParser expectations
+    // Pattern-based fallback responses in JSON format matching ResponseParser expectations.
+    // Only non-mutating follow is allowed; mine/build/attack stay fail-closed.
     private static final List<FallbackRule> FALLBACK_RULES = List.of(
-        // Regras mais específicas devem vir antes das genéricas.
-        new FallbackRule(
-            Pattern.compile("(?i).*(build|construct|create|make).*(house|home|shelter|structure|base).*"),
-            "{\"reasoning\":\"[Fallback] Building action detected\",\"plan\":\"Build a small house\","
-                + "\"tasks\":[{\"action\":\"build\",\"parameters\":{\"structure\":\"house\","
-                + "\"blocks\":[\"oak_planks\",\"cobblestone\",\"glass_pane\"],\"dimensions\":[9,6,9]}}]}"
-        ),
-        new FallbackRule(
-            Pattern.compile("(?i).*(attack|fight|kill|destroy|hostile|monster|zombie|skeleton|creeper).*"),
-            "{\"reasoning\":\"[Fallback] Combat action detected\",\"plan\":\"Attack nearby hostile mobs\","
-                + "\"tasks\":[{\"action\":\"attack\",\"parameters\":{\"target\":\"hostile\"}}]}"
-        ),
         new FallbackRule(
             Pattern.compile("(?i).*(follow|come|here|with me|accompany).*"),
-            "{\"reasoning\":\"[Fallback] Follow action detected\",\"plan\":\"Follow the nearest player\","
+            "{\"decision\":\"act\",\"summary\":\"Follow the nearest player\",\"goalStatus\":\"in_progress\","
                 + "\"tasks\":[{\"action\":\"follow\",\"parameters\":{\"player\":\"me\"}}]}"
-        ),
-        new FallbackRule(
-            Pattern.compile("(?i).*(mine|dig|collect|gather|ore|diamond|iron|coal|stone).*"),
-            "{\"reasoning\":\"[Fallback] Mining action detected\",\"plan\":\"Mine nearby iron ore\","
-                + "\"tasks\":[{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":10}}]}"
         )
     );
 
     // Default response when no pattern matches
     private static final String DEFAULT_RESPONSE =
-        "{\"reasoning\":\"[Fallback] No safe offline action matched\","
-            + "\"plan\":\"No action available while the AI provider is offline\",\"tasks\":[]}";
+        "{\"decision\":\"blocked\",\"summary\":\"No safe offline action is available\","
+            + "\"goalStatus\":\"blocked\",\"tasks\":[]}";
 
     /**
      * Generates a fallback response based on pattern matching.
      *
      * <p>Analyzes the prompt text to identify the user's intent and returns
      * a pre-configured action response. If no pattern matches, returns a
-     * safe "wait" action.</p>
+     * blocked operational decision with no tasks.</p>
      *
      * @param prompt Original prompt that failed
      * @param error  The error that triggered the fallback (for logging)

@@ -194,7 +194,7 @@ public final class AutonomyController {
         }
 
         AgentGoal goal = AgentGoal.create(description, GoalOrigin.USER,
-            interruptedGoal == null ? GoalPriority.USER : GoalPriority.USER_INTERRUPT,
+            GoalPriority.USER_INTERRUPT,
             null, now);
         goal.setConstraints(GoalConstraints.fromDescription(description));
         if (controllerUuid != null) goal.putMetadata("controllerUuid", controllerUuid.toString());
@@ -279,7 +279,15 @@ public final class AutonomyController {
 
     public AutonomyMode getMode() {
         if (!SteveConfig.AUTONOMY_ENABLED.get()) return AutonomyMode.OFF;
+        SteveMemory memory = steve.getMemory();
+        AutonomyMode override = memory == null ? null : memory.getAutonomyModeOverride();
+        if (override != null) return override;
         return AutonomyMode.parse(SteveConfig.AUTONOMY_MODE.get());
+    }
+
+    /** Restart may restore only auto-resumable goals; BLOCKED stays blocked. */
+    static boolean canRestoreAsActive(AgentGoal persisted) {
+        return persisted != null && persisted.canAutoResume();
     }
 
     public AgentState getState() { return stateMachine.getCurrentState(); }
@@ -354,6 +362,12 @@ public final class AutonomyController {
             }
         }
         if (persisted != null && !persisted.isTerminal()) {
+            if (!canRestoreAsActive(persisted)) {
+                steve.getMemory().rememberGoal(persisted);
+                steve.getMemory().clearActiveGoal();
+                moveTo(AgentState.IDLE, "blocked goal is not auto-resumed");
+                return;
+            }
             if (persisted.getStatus() == GoalStatus.PAUSED) {
                 activeGoal = persisted;
                 applyControllerIdentity(activeGoal);

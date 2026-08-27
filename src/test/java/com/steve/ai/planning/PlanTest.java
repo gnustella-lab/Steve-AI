@@ -15,6 +15,39 @@ import static org.junit.jupiter.api.Assertions.*;
 class PlanTest {
 
     @Test
+    void keepsPlanIdentityAndArchivesCompletedStepsAcrossHorizonRevisions() {
+        Plan plan = new Plan("collect", UUID.randomUUID(), UUID.randomUUID(), 3, 3, 3, 100, 0);
+        UUID planId = plan.getPlanId();
+        plan.loadHorizon(List.of(new Task("mine", Map.of("block", "stone"))),
+            "first", "initial", 10L);
+        plan.markCurrentStepActive(11L);
+        plan.recordCurrentStepResult(com.steve.ai.action.ActionResult.success("mined").build(), 12L);
+        plan.advanceToNextTask(13L);
+        int firstRevision = plan.getRevision();
+
+        plan.loadHorizon(List.of(new Task("place", Map.of("block", "stone"))),
+            "second", "replan", 14L);
+
+        assertEquals(planId, plan.getPlanId());
+        assertTrue(plan.getRevision() > firstRevision);
+        assertEquals(1, plan.getCompletedStepSummaries().size());
+        assertEquals("mine", plan.getCompletedStepSummaries().get(0).getAction());
+    }
+
+    @Test
+    void boundsCompletedStepArchiveWhenHorizonsAreReplacedRepeatedly() {
+        Plan plan = new Plan("repeat", null, null, 3, 3, 3, 0, 0);
+        for (int i = 0; i < Plan.MAX_COMPLETED_STEP_SUMMARIES + 8; i++) {
+            plan.loadHorizon(List.of(new Task("step_" + i, Map.of())), "summary", "replan", i);
+            plan.markCurrentStepActive(i);
+            plan.recordCurrentStepResult(com.steve.ai.action.ActionResult.success("done").build(), i);
+            plan.advanceToNextTask(i);
+        }
+
+        assertTrue(plan.getCompletedStepSummaries().size() <= Plan.MAX_COMPLETED_STEP_SUMMARIES);
+    }
+
+    @Test
     void testStateTransitions() {
         Plan plan = new Plan("test", UUID.randomUUID(), UUID.randomUUID(), 3, 3, 3, 100, 0);
         assertEquals(Plan.State.CREATED, plan.getState());

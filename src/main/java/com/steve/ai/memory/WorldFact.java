@@ -39,11 +39,11 @@ public final class WorldFact {
         this.dimension = bounded(dimension, 128);
         this.position = position;
         this.lastSeenTick = Math.max(0L, lastSeenTick);
-        this.confidence = Math.max(0.0, Math.min(1.0, confidence));
+        this.confidence = sanitizeConfidence(confidence);
         this.ttlTicks = Math.max(0L, Math.min(ttlTicks, 7_200_000L));
         Map<String, String> copy = new LinkedHashMap<>();
         if (details != null) {
-            details.entrySet().stream().limit(12).forEach(entry ->
+            details.entrySet().stream().filter(entry -> entry != null).limit(12).forEach(entry ->
                 copy.put(bounded(entry.getKey(), 64), bounded(entry.getValue(), 256)));
         }
         this.details = Collections.unmodifiableMap(copy);
@@ -65,7 +65,9 @@ public final class WorldFact {
     public Map<String, String> details() { return details; }
 
     public boolean isExpired(long now) {
-        return ttlTicks > 0 && now - lastSeenTick > ttlTicks;
+        if (ttlTicks <= 0) return false;
+        if (now < lastSeenTick) return true;
+        return now - lastSeenTick > ttlTicks;
     }
 
     public CompoundTag save() {
@@ -106,6 +108,11 @@ public final class WorldFact {
         return new WorldFact(kind, tag.getString("Key"), tag.getString("Dimension"), position,
             tag.getLong("LastSeen"), tag.contains("Confidence") ? tag.getDouble("Confidence") : 0.5,
             tag.contains("Ttl") ? tag.getLong("Ttl") : 0L, details);
+    }
+
+    private static double sanitizeConfidence(double confidence) {
+        if (!Double.isFinite(confidence)) return 0.0;
+        return Math.max(0.0, Math.min(1.0, confidence));
     }
 
     private static String bounded(String value, int max) {
