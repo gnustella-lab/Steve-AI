@@ -49,6 +49,9 @@ public final class RecoveryEngine {
             case ActionResult.ERROR_ENTITY_GONE ->
                 replanIfAllowed(goal, "Target disappeared; observe for another compatible target",
                     metadata(result, task, position, "entityGone", true, "failureCount", count));
+            case ActionResult.ERROR_TARGET_NOT_FOUND ->
+                replanIfAllowed(goal, "No compatible target was observed; refresh perception before retrying",
+                    metadata(result, task, position, "targetNotFound", true, "failureCount", count));
             case ActionResult.ERROR_PLAYER_OFFLINE -> RecoveryDecision.pause("Controlling player is offline");
             case ActionResult.ERROR_CHUNK_UNLOADED ->
                 replanIfAllowed(goal, "Chunk is unavailable; navigate naturally or choose another approach",
@@ -90,6 +93,12 @@ public final class RecoveryEngine {
             putIfPresent(metadata, "missingItem", result.getObservation("missing_item"));
             putIfPresent(metadata, "missingQuantity", result.getObservation("missing_quantity"));
             putIfPresent(metadata, "requiredTool", result.getObservation("required_tool"));
+            putIfPresent(metadata, "closestDistance", result.getObservation("closestDistance"));
+            putIfPresent(metadata, "attempts", result.getObservation("attempts"));
+            putIfPresent(metadata, "blockedAt", result.getObservation("blockedAt"));
+            putIfPresent(metadata, "pathLength", result.getObservation("pathLength"));
+            putIfPresent(metadata, "targetsSeen", result.getObservation("targetsSeen"));
+            putIfPresent(metadata, "targetsKilled", result.getObservation("targetsKilled"));
             putCoordinate(metadata, "x", result.getObservation("x"));
             putCoordinate(metadata, "y", result.getObservation("y"));
             putCoordinate(metadata, "z", result.getObservation("z"));
@@ -140,6 +149,13 @@ public final class RecoveryEngine {
     }
 
     private static String resolvePrerequisite(Task task, ActionResult result) {
+        Object requiredAction = result.getObservation("required_action");
+        Object requiredItem = result.getObservation("required_item");
+        if (requiredAction != null && requiredItem != null
+                && "smelt".equalsIgnoreCase(String.valueOf(requiredAction))) {
+            return "Smelt " + safeQuantity(result.getObservation("required_quantity"))
+                + " " + requiredItem;
+        }
         Object missing = result.getObservation("missing_item");
         if (missing != null && !String.valueOf(missing).isBlank()) {
             Object quantity = result.getObservation("missing_quantity");

@@ -139,7 +139,7 @@ public final class ObservationSnapshot {
             builder.x(pos.getX()).y(pos.getY()).z(pos.getZ());
             
             ResourceKey<Level> dimKey = level.dimension();
-            builder.dimension(dimKey != null ? dimKey.location().getPath() : "unknown");
+            builder.dimension(dimKey != null ? dimKey.location().toString() : "unknown");
             
             builder.dayTime(level.getDayTime());
             builder.isNight(level.isNight());
@@ -164,10 +164,6 @@ public final class ObservationSnapshot {
         if (memory != null) {
             builder.currentGoal(memory.getCurrentGoal() != null ? memory.getCurrentGoal() : "");
             builder.recentActions(memory.getRecentActions(5));
-            builder.relevantMemory(memory.getRelevantFacts(memory.getCurrentGoal(), 6).stream()
-                .map(fact -> fact.kind().name().toLowerCase() + ":" + fact.key()
-                    + (fact.position() == null ? "" : "@" + fact.position().toShortString()))
-                .toList());
         }
 
         if (steve.getActionExecutor() != null && steve.getActionExecutor().getStateMachine() != null) {
@@ -270,7 +266,11 @@ public final class ObservationSnapshot {
           .append("] in ").append(dimension).append("\n");
         
         long day = (dayTime / 24000L) + 1;
-        String timeOfDay = isNight ? "night" : "morning";
+        long time = Math.floorMod(dayTime, 24000L);
+        String timeOfDay = time < 1_000L ? "dawn"
+            : time < 6_000L ? "morning"
+            : time < 12_000L ? "afternoon"
+            : time < 13_000L ? "evening" : "night";
         sb.append("Time: Day ").append(day).append(", ").append(timeOfDay)
           .append(" | Biome: ").append(biome).append(" | Light: ").append(lightLevel).append("\n");
         

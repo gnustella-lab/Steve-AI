@@ -26,7 +26,10 @@ public final class PlanningContext {
         this.primaryGoal = primaryGoal;
         this.activeSubgoal = activeSubgoal;
         this.observation = observation;
-        this.relevantMemory = boundedList(relevantMemory, 12);
+        List<String> boundedMemory = boundedList(relevantMemory, 12);
+        this.relevantMemory = observation != null
+                && observation.getRelevantMemory().equals(boundedMemory)
+            ? List.of() : boundedMemory;
         this.recentCompletedSteps = boundedList(recentCompletedSteps, 12);
         this.lastActionResult = bounded(lastActionResult, 512);
         this.failedApproaches = boundedList(failedApproaches, 12);

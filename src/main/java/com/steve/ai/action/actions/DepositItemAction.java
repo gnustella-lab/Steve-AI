@@ -86,6 +86,7 @@ public class DepositItemAction extends BaseAction {
             }
 
             int depositedThisTick = 0;
+            int undeposited = 0;
             for (ItemStack stackToDeposit : allItems) {
                 ItemStack stack = stackToDeposit.copy();
 
@@ -120,18 +121,23 @@ public class DepositItemAction extends BaseAction {
                 }
 
                 if (!stack.isEmpty()) {
-                    steve.getSteveInventory().insert(stack); // Put back what couldn't fit
+                    undeposited += stack.getCount();
+                    ItemStack restoreRemainder = steve.getSteveInventory().insert(stack);
+                    if (!restoreRemainder.isEmpty()) steve.spawnAtLocation(restoreRemainder);
                 }
             }
 
-            if (blockEntity != null) {
-                blockEntity.setChanged();
-            }
+            blockEntity.setChanged();
 
-            if (depositedThisTick == 0) {
-                result = ActionResult.failure(ActionResult.ERROR_INVENTORY_FULL, "Container is full").build();
+            if (undeposited > 0) {
+                result = ActionResult.failure(ActionResult.ERROR_INVENTORY_FULL,
+                    "Container filled before all items were deposited")
+                    .partialSuccess(depositedThisTick > 0).retryable(true)
+                    .observation("deposited", depositedThisTick)
+                    .observation("undeposited", undeposited).build();
             } else {
-                result = ActionResult.success("Deposited all items").build();
+                result = ActionResult.success("Deposited all items")
+                    .observation("deposited", depositedThisTick).build();
             }
             return;
         }

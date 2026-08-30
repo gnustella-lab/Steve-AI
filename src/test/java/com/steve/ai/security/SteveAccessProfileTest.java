@@ -48,6 +48,7 @@ class SteveAccessProfileTest {
         original.authorize(sharedPlayer);
         original.setTeam("builders");
         original.setPermissionProfile("survival-safe");
+        original.grantCapability(AgentCapability.ALLOW_FLIGHT);
 
         CompoundTag tag = original.save();
         SteveAccessProfile restored = new SteveAccessProfile();
@@ -57,5 +58,20 @@ class SteveAccessProfileTest {
         assertTrue(restored.getAuthorizedPlayers().contains(sharedPlayer));
         assertEquals("builders", restored.getTeam());
         assertEquals("survival-safe", restored.getPermissionProfile());
+        assertTrue(restored.hasCapability(AgentCapability.ALLOW_FLIGHT));
+        assertFalse(restored.hasCapability(AgentCapability.ALLOW_TELEPORT));
+    }
+
+    @Test
+    void unknownPersistedCapabilityFailsClosed() {
+        CompoundTag tag = new CompoundTag();
+        net.minecraft.nbt.ListTag capabilities = new net.minecraft.nbt.ListTag();
+        capabilities.add(net.minecraft.nbt.StringTag.valueOf("LLM_SUPERPOWER"));
+        tag.put("Capabilities", capabilities);
+
+        SteveAccessProfile profile = new SteveAccessProfile();
+        profile.load(tag);
+
+        assertTrue(profile.getCapabilities().isEmpty());
     }
 }

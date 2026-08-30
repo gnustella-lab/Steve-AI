@@ -72,6 +72,11 @@ public class CraftingPlanner {
             return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),
                 false, "Target item is null or blank");
         }
+        targetQuantity = Math.max(1, Math.min(2_048, targetQuantity));
+        if (inventory == null || level == null || level.getServer() == null) {
+            return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),
+                false, "Server-side inventory and level are required");
+        }
 
         // Find the target recipe
         Recipe<?> targetRecipe = findRecipeForItem(level, targetItem);
@@ -87,73 +92,37 @@ public class CraftingPlanner {
         // Collect all recipes that could be involved
         collectRelevantRecipes(level, targetItem, graph, recipeMap, new java.util.HashSet<>(), inventory);
 
-        // Build the plan
-        List<CraftStep> steps = new ArrayList<>();
-        List<IngredientResolver.IngredientQuantity> missingIngredients = new ArrayList<>();
-
+        List<String> order;
         try {
-            List<String> order = graph.topologicalSort();
-            java.util.Set<String> producedItems = new java.util.HashSet<>();
-            for (String recipeId : order) {
-                RecipeDependencyGraph.Node node = graph.getNode(recipeId);
-                if (node == null) continue;
-
-                Recipe<?> recipe = recipeMap.get(recipeId);
-                if (recipe == null) continue;
-
-                // Calculate how many times to craft
-                int timesToCraft = calculateTimesToCraft(node, targetItem, targetQuantity);
-
-                // Resolve ingredients
-                List<IngredientResolver.IngredientQuantity> ingredients = node.ingredients();
-                IngredientResolver.Resolution resolution = IngredientResolver.resolve(inventory, ingredients);
-
-                if (!resolution.fullySatisfied()) {
-                    for (var entry : resolution.deficit().entrySet()) {
-                        IngredientResolver.IngredientQuantity iq = entry.getKey() != null
-                            ? new IngredientResolver.IngredientQuantity(entry.getKey(),
-                                resolveIngredientName(entry.getKey()), entry.getValue())
-                            : null;
-                        boolean producedByPlan = false;
-                        if (iq != null && iq.ingredient() != null) {
-                            for (var producedName : producedItems) {
-                                String full = producedName.contains(":") ? producedName : "minecraft:" + producedName;
-                                var rl = ResourceLocation.tryParse(full);
-                                if (rl != null) {
-                                    var prodItem = BuiltInRegistries.ITEM.get(rl);
-                                    if (prodItem != net.minecraft.world.item.Items.AIR
-                                            && iq.ingredient().test(new ItemStack(prodItem))) {
-                                        producedByPlan = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if (!producedByPlan) {
-                            missingIngredients.add(iq != null
-                                ? iq : new IngredientResolver.IngredientQuantity("unknown", entry.getValue()));
-                        }
-                    }
-                }
-
-                boolean needsCraftingTable = !recipe.canCraftInDimensions(2, 2);
-
-                steps.add(new CraftStep(
-                    recipeId,
-                    recipe,
-                    node.recipeType(),
-                    node.resultItem(),
-                    node.resultCount(),
-                    timesToCraft,
-                    ingredients,
-                    needsCraftingTable
-                ));
-                producedItems.add(node.resultItem());
-            }
+            order = graph.topologicalSort();
         } catch (RecipeDependencyGraph.CircularDependencyException e) {
             return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),
                 false, "Circular dependency: " + e.getMessage());
         }
+
+        CraftRequirements requirements = calculateRequirements(
+            order, graph, targetItem, targetQuantity, inventory);
+        List<CraftStep> steps = new ArrayList<>();
+        for (String recipeId : order) {
+            RecipeDependencyGraph.Node node = graph.getNode(recipeId);
+            Recipe<?> recipe = recipeMap.get(recipeId);
+            if (node == null || recipe == null) continue;
+            int timesToCraft = requirements.craftsByRecipe().getOrDefault(recipeId, 0);
+            if (timesToCraft <= 0) continue;
+            steps.add(new CraftStep(
+                recipeId,
+                recipe,
+                node.recipeType(),
+                node.resultItem(),
+                node.resultCount(),
+                timesToCraft,
+                node.ingredients(),
+                !recipe.canCraftInDimensions(2, 2)
+            ));
+        }
+
+        List<IngredientResolver.IngredientQuantity> missingIngredients =
+            new ArrayList<>(requirements.missingRawMaterials());
 
         boolean achievable = missingIngredients.isEmpty();
         String failureReason = achievable ? null : "Missing ingredients: " + missingIngredients.size();
@@ -213,9 +182,10 @@ public class CraftingPlanner {
 
         graph.addRecipe(recipeId, recipe.getType(), ingredients, resultItem, resultCount);
 
-        // Recursively collect recipes for ingredients
+        // Recursively collect recipes even when some matching inventory is present. A single
+        // existing ingredient must not hide a dependency needed for a larger requested quantity.
         for (var ingredient : recipe.getIngredients()) {
-            if (ingredient.isEmpty() || hasMatchingIngredient(inventory, ingredient)) continue;
+            if (ingredient.isEmpty()) continue;
             for (var item : ingredient.getItems()) {
                 String itemName = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
                     item.getItem()).toString();
@@ -227,12 +197,6 @@ public class CraftingPlanner {
         }
     }
 
-    private static boolean hasMatchingIngredient(SteveInventory inventory,
-            net.minecraft.world.item.crafting.Ingredient ingredient) {
-        if (inventory == null || ingredient == null || ingredient.isEmpty()) return false;
-        return inventory.getContents().stream().anyMatch(ingredient::test);
-    }
-
     private static String resolveIngredientName(net.minecraft.world.item.crafting.Ingredient ingredient) {
         if (ingredient == null || ingredient.isEmpty()) return "unknown";
         ItemStack[] items = ingredient.getItems();
@@ -241,12 +205,101 @@ public class CraftingPlanner {
         return key == null ? "unknown" : key.toString();
     }
 
-    private static int calculateTimesToCraft(RecipeDependencyGraph.Node node,
-            String targetItem, int targetQuantity) {
-        if (normalizeItemId(node.resultItem()).equals(normalizeItemId(targetItem))) {
-            return (int) Math.ceil((double) targetQuantity / node.resultCount());
+    private static CraftRequirements calculateRequirements(List<String> order,
+            RecipeDependencyGraph graph, String targetItem, int targetQuantity,
+            SteveInventory inventory) {
+        Map<String, Integer> outputDemand = new HashMap<>();
+        Map<String, Integer> craftsByRecipe = new HashMap<>();
+        List<IngredientResolver.IngredientQuantity> missingRawMaterials = new ArrayList<>();
+        String normalizedTarget = normalizeItemId(targetItem);
+
+        String targetRecipe = order.stream()
+            .filter(recipeId -> {
+                RecipeDependencyGraph.Node node = graph.getNode(recipeId);
+                return node != null && normalizeItemId(node.resultItem()).equals(normalizedTarget);
+            })
+            .findFirst()
+            .orElse(null);
+        if (targetRecipe == null) {
+            return new CraftRequirements(Map.of(), List.of());
         }
-        return 1;
+
+        outputDemand.put(targetRecipe, targetQuantity);
+        InventorySupply supply = new InventorySupply(inventory);
+
+        // Dependencies are topologically before dependants, so traverse backwards to propagate
+        // exact output demand from the requested item into every intermediate recipe.
+        for (int index = order.size() - 1; index >= 0; index--) {
+            String recipeId = order.get(index);
+            RecipeDependencyGraph.Node node = graph.getNode(recipeId);
+            if (node == null) continue;
+            int requiredOutput = Math.max(0, outputDemand.getOrDefault(recipeId, 0));
+            if (requiredOutput <= 0) continue;
+
+            int times = ceilDiv(requiredOutput, Math.max(1, node.resultCount()));
+            craftsByRecipe.put(recipeId, times);
+            for (IngredientResolver.IngredientQuantity ingredient : node.ingredients()) {
+                int required = safeMultiply(Math.max(0, ingredient.quantity()), times);
+                int remaining = supply.consume(ingredient.ingredient(), required);
+                if (remaining <= 0) continue;
+
+                String producer = graph.findProducerForIngredient(ingredient);
+                if (producer != null && graph.getNode(producer) != null) {
+                    outputDemand.merge(producer, remaining, CraftingPlanner::safeAdd);
+                } else {
+                    missingRawMaterials.add(new IngredientResolver.IngredientQuantity(
+                        ingredient.ingredient(),
+                        ingredient.ingredientName() == null || ingredient.ingredientName().isBlank()
+                            ? resolveIngredientName(ingredient.ingredient()) : ingredient.ingredientName(),
+                        remaining));
+                }
+            }
+        }
+        return new CraftRequirements(Map.copyOf(craftsByRecipe), List.copyOf(missingRawMaterials));
+    }
+
+    private static int ceilDiv(int numerator, int denominator) {
+        if (numerator <= 0) return 0;
+        return 1 + (numerator - 1) / Math.max(1, denominator);
+    }
+
+    private static int safeMultiply(int left, int right) {
+        long value = (long) left * right;
+        return (int) Math.min(1_000_000L, Math.max(0L, value));
+    }
+
+    private static int safeAdd(int left, int right) {
+        return (int) Math.min(1_000_000L, Math.max(0L, (long) left + right));
+    }
+
+    private record CraftRequirements(
+        Map<String, Integer> craftsByRecipe,
+        List<IngredientResolver.IngredientQuantity> missingRawMaterials
+    ) {}
+
+    private static final class InventorySupply {
+        private final List<ItemStack> stacks = new ArrayList<>();
+
+        private InventorySupply(SteveInventory inventory) {
+            if (inventory == null) return;
+            for (ItemStack stack : inventory.getContents()) {
+                if (stack != null && !stack.isEmpty()) stacks.add(stack.copy());
+            }
+        }
+
+        private int consume(net.minecraft.world.item.crafting.Ingredient ingredient, int requested) {
+            if (ingredient == null || requested <= 0) return Math.max(0, requested);
+            int remaining = requested;
+            for (ItemStack stack : stacks) {
+                if (remaining <= 0) break;
+                if (!stack.isEmpty() && ingredient.test(stack)) {
+                    int taken = Math.min(stack.getCount(), remaining);
+                    stack.shrink(taken);
+                    remaining -= taken;
+                }
+            }
+            return remaining;
+        }
     }
 
     private static String normalizeItemId(String itemName) {

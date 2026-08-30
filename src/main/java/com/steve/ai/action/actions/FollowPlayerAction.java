@@ -35,7 +35,9 @@ public class FollowPlayerAction extends BaseAction {
         
         if (ticksRunning > MAX_TICKS) {
             steve.getNavigation().stop();
-            result = ActionResult.success("Stopped following").build();
+            result = ActionResult.failure(ActionResult.ERROR_TIMEOUT,
+                "Follow duration expired before cancellation")
+                .retryable(false).build();
             return;
         }
         
@@ -67,6 +69,7 @@ public class FollowPlayerAction extends BaseAction {
     }
 
     private void findPlayer() {
+        targetPlayer = null;
         java.util.List<? extends Player> players = steve.level().players();
 
         if (playerName == null || playerName.contains("PLAYER") || playerName.contains("NAME")

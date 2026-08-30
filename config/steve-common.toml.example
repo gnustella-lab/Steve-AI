@@ -59,9 +59,23 @@
     
     # Allow Steves to respond in chat
     enableChatResponses = true
+
+    # Who receives operational Steve chat: controller (default), owner, authorized, or broadcast.
+    # Broadcast is never implicit.
+    chatFeedbackScope = "controller"
     
     # Maximum number of Steves that can be active simultaneously
     maxActiveSteves = 10
 
     # Inventory slots for newly created Steves. Existing larger inventories are preserved.
     inventorySlots = 27
+
+    # Survival construction consumes inventory materials. Creative placement also requires
+    # a server-granted ALLOW_CREATIVE_BUILD capability.
+    survivalConstruction = true
+    creativeConstruction = false
+
+    # Global hard gates. Each Steve also needs a matching server-granted capability.
+    # The LLM cannot enable these through action parameters.
+    allowTeleport = false
+    allowFlight = false

@@ -2,6 +2,7 @@ package com.steve.ai.action.actions;
 
 import com.steve.ai.SteveMod;
 import com.steve.ai.action.ActionResult;
+import com.steve.ai.action.ResourceReservationBoard;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.security.PermissionManager;
@@ -13,6 +14,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -78,6 +80,11 @@ public class MineBlockAction extends BaseAction {
                 "Invalid block type: " + blockName).build();
             return;
         }
+        if (targetQuantity <= 0) {
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                "Mining quantity must be positive").build();
+            return;
+        }
 
         if (targetBlock.defaultBlockState().requiresCorrectToolForDrops()
                 && steve.getSteveInventory().findBestToolForBlock(targetBlock) == null) {
@@ -92,7 +99,7 @@ public class MineBlockAction extends BaseAction {
         }
         
         net.minecraft.world.entity.player.Player preferredPlayer = findPreferredPlayer();
-        if (preferredPlayer != null) {
+        if (preferredPlayer != null && steve.distanceToSqr(preferredPlayer) <= 32.0 * 32.0) {
             net.minecraft.world.phys.Vec3 eyePos = preferredPlayer.getEyePosition(1.0F);
             net.minecraft.world.phys.Vec3 lookVec = preferredPlayer.getLookAngle();
             
@@ -191,6 +198,12 @@ public class MineBlockAction extends BaseAction {
         }
         
         if (steve.level().getBlockState(currentTarget).getBlock() == targetBlock) {
+            if (!ResourceReservationBoard.getInstance().tryReserve(
+                    dimension(), currentTarget, steve.getUUID(), currentTick(),
+                    ResourceReservationBoard.DEFAULT_TTL_TICKS)) {
+                currentTarget = null;
+                return;
+            }
             if (isProtected(currentTarget)) {
                 result = ActionResult.failure(ActionResult.ERROR_PROTECTED,
                     "Target block is inside a protected region")
@@ -208,9 +221,11 @@ public class MineBlockAction extends BaseAction {
 
             if (!steve.breakBlockIntoInventory(currentTarget)) {
                 SteveMod.LOGGER.warn("Minecraft rejected mining at {}", currentTarget);
+                releaseCurrentTarget();
                 currentTarget = null;
                 return;
             }
+            ResourceReservationBoard.getInstance().release(dimension(), currentTarget, steve.getUUID());
             minedCount++;
             ticksSinceLastMine = 0; // Reset delay timer
 
@@ -236,6 +251,7 @@ public class MineBlockAction extends BaseAction {
             
             currentTarget = null;
         } else {
+            releaseCurrentTarget();
             currentTarget = null;
         }
     }
@@ -244,10 +260,14 @@ public class MineBlockAction extends BaseAction {
     protected void onCancel() {
         steve.setFlying(false);
         steve.getNavigation().stop();
+        ResourceReservationBoard.getInstance().releaseAll(steve.getUUID());
     }
 
     @Override
     protected void onFinish() {
+        steve.setFlying(false);
+        steve.getNavigation().stop();
+        ResourceReservationBoard.getInstance().releaseAll(steve.getUUID());
         restorePreviousMainHandItem();
     }
 
@@ -266,6 +286,7 @@ public class MineBlockAction extends BaseAction {
      * Check light level and place torch if too dark
      */
     private void placeTorchIfDark() {
+        if (steve.getSteveInventory().count(Items.TORCH) <= 0) return;
         BlockPos stevePos = steve.blockPosition();
         int lightLevel = steve.level().getBrightness(net.minecraft.world.level.LightLayer.BLOCK, stevePos);
         
@@ -275,6 +296,11 @@ public class MineBlockAction extends BaseAction {
             if (torchPos != null && steve.level().getBlockState(torchPos).isAir()
                     && !isProtected(torchPos)) {
                 if (steve.level().setBlock(torchPos, Blocks.TORCH.defaultBlockState(), 3)) {
+                    int consumed = steve.getSteveInventory().remove(Items.TORCH, 1);
+                    if (consumed != 1) {
+                        steve.level().removeBlock(torchPos, false);
+                        return;
+                    }
                     SteveMod.LOGGER.info("Steve '{}' placed torch at {} (light level was {})",
                         steve.getSteveName(), torchPos, lightLevel);
                     steve.swing(InteractionHand.MAIN_HAND, true);
@@ -314,6 +340,11 @@ public class MineBlockAction extends BaseAction {
     private void mineNearbyBlock() {
         BlockPos centerPos = currentTunnelPos;
         BlockPos abovePos = centerPos.above();
+        if (!steve.blockPosition().closerThan(centerPos, 2.5)) {
+            steve.getNavigation().moveTo(centerPos.getX() + 0.5, centerPos.getY(),
+                centerPos.getZ() + 0.5, 1.0);
+            return;
+        }
         
         BlockState centerState = steve.level().getBlockState(centerPos);
         if (!centerState.isAir()) {
@@ -378,16 +409,25 @@ public class MineBlockAction extends BaseAction {
             for (int y = -1; y <= 1; y++) {
                 BlockPos orePos = checkPos.offset(0, y, 0);
                 if (steve.level().getBlockState(orePos).getBlock() == targetBlock
-                        && !isProtected(orePos)) {
+                        && !isProtected(orePos)
+                        && !ResourceReservationBoard.getInstance().isHeldByOther(
+                            dimension(), orePos, steve.getUUID(), currentTick())) {
                     foundBlocks.add(orePos);
                 }
             }
         }
         
         if (!foundBlocks.isEmpty()) {
-            currentTarget = foundBlocks.stream()
-                .min((a, b) -> Double.compare(a.distSqr(currentTunnelPos), b.distSqr(currentTunnelPos)))
-                .orElse(null);
+            foundBlocks.sort((a, b) -> Double.compare(a.distSqr(currentTunnelPos), b.distSqr(currentTunnelPos)));
+            currentTarget = null;
+            for (BlockPos candidate : foundBlocks) {
+                if (ResourceReservationBoard.getInstance().tryReserve(
+                        dimension(), candidate, steve.getUUID(), currentTick(),
+                        ResourceReservationBoard.DEFAULT_TTL_TICKS)) {
+                    currentTarget = candidate;
+                    break;
+                }
+            }
             
             if (currentTarget != null) {
                 SteveMod.LOGGER.info("Steve '{}' found {} ahead in tunnel at {}", 
@@ -472,5 +512,21 @@ public class MineBlockAction extends BaseAction {
     private boolean isProtected(BlockPos pos) {
         return steve.level() instanceof ServerLevel serverLevel
             && PermissionManager.getInstance().isProtected(serverLevel, pos);
+    }
+
+    private void releaseCurrentTarget() {
+        if (currentTarget != null) {
+            ResourceReservationBoard.getInstance().release(dimension(), currentTarget, steve.getUUID());
+        }
+    }
+
+    private long currentTick() {
+        return steve.level() instanceof ServerLevel level && level.getServer() != null
+            ? level.getServer().getTickCount() : 0L;
+    }
+
+    private String dimension() {
+        return steve.level() instanceof ServerLevel level
+            ? level.dimension().location().toString() : "unknown";
     }
 }

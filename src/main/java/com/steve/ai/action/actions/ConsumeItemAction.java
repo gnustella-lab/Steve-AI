@@ -46,12 +46,23 @@ public class ConsumeItemAction extends BaseAction {
             return;
         }
 
+        if (!targetItem.isEdible() || targetItem.getFoodProperties() == null) {
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                itemName + " is not edible").build();
+            return;
+        }
         if (!steve.getSteveInventory().consume(targetItem)) {
             result = ActionResult.failure(ActionResult.ERROR_RESOURCE, "I don't have any " + itemName).build();
             return;
         }
 
-        result = ActionResult.success("Consumed " + itemName).build();
+        int nutrition = targetItem.getFoodProperties().getNutrition();
+        float healthBefore = steve.getHealth();
+        steve.heal(Math.max(1.0F, nutrition / 2.0F));
+        result = ActionResult.success("Consumed " + itemName)
+            .observation("nutrition", nutrition)
+            .observation("healthRestored", Math.max(0.0F, steve.getHealth() - healthBefore))
+            .build();
     }
 
     @Override

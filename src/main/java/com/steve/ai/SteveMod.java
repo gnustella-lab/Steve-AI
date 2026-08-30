@@ -2,6 +2,7 @@ package com.steve.ai;
 
 import com.mojang.logging.LogUtils;
 import com.steve.ai.action.CollaborativeBuildManager;
+import com.steve.ai.action.ResourceReservationBoard;
 import com.steve.ai.command.SteveCommands;
 import com.steve.ai.config.SteveConfig;
 import com.steve.ai.di.SimpleServiceContainer;
@@ -96,6 +97,7 @@ public class SteveMod {
         steveManager.clearTracking();
         StructureRegistry.clear();
         CollaborativeBuildManager.clearAllBuilds();
+        ResourceReservationBoard.getInstance().clear();
         PermissionManager.getInstance().clear();
         PluginManager.getInstance().unloadPlugins();
         ActionRegistry.getInstance().clear();

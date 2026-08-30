@@ -5,6 +5,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.config.SteveConfig;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.security.PermissionManager;
+import com.steve.ai.security.AgentCapability;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -91,8 +92,9 @@ public class PlaceBlockAction extends BaseAction {
             return;
         }
 
-        boolean survival = SteveConfig.SURVIVAL_CONSTRUCTION.get()
-            && !SteveConfig.CREATIVE_CONSTRUCTION.get();
+        boolean creativeAuthorized = SteveConfig.CREATIVE_CONSTRUCTION.get()
+            && steve.getAccessProfile().hasCapability(AgentCapability.ALLOW_CREATIVE_BUILD);
+        boolean survival = !creativeAuthorized;
         Item blockItem = blockToPlace.asItem();
         if (survival && blockItem != Items.AIR) {
             if (!materialReserved) {

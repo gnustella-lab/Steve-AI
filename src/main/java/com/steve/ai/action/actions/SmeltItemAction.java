@@ -19,6 +19,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import com.steve.ai.security.PermissionManager;
 
@@ -124,8 +125,18 @@ public class SmeltItemAction extends BaseAction {
             return;
         }
 
+        Item targetItem = parseItem(itemName);
         ItemStack outputStack = furnace.getItem(SLOT_OUTPUT);
         if (!outputStack.isEmpty()) {
+            if (!outputStack.is(targetItem)) {
+                result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
+                    "Furnace output contains " + outputStack.getHoverName().getString()
+                        + " instead of " + itemName)
+                    .retryable(true).requiresReplanning(true)
+                    .observation("blocking_output", BuiltInRegistries.ITEM.getKey(outputStack.getItem()).toString())
+                    .build();
+                return;
+            }
             int taken = Math.min(outputStack.getCount(), quantity - smelted);
             ItemStack retrieved = outputStack.copy();
             retrieved.setCount(taken);
@@ -147,7 +158,17 @@ public class SmeltItemAction extends BaseAction {
 
         if (!furnacePrepared) {
             ItemStack existingInput = furnace.getItem(SLOT_INPUT);
-            if (existingInput.isEmpty()) {
+            if (!existingInput.isEmpty()) {
+                if (!inputSmeltsTo(serverLevel, existingInput, targetItem)) {
+                    result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
+                        "Furnace contains incompatible input")
+                        .retryable(true).requiresReplanning(true)
+                        .observation("blocking_input",
+                            BuiltInRegistries.ITEM.getKey(existingInput.getItem()).toString())
+                        .build();
+                    return;
+                }
+            } else {
                 int queued = queueInput(serverLevel, furnace);
                 if (queued <= 0 && smelted < quantity) {
                     result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
@@ -172,6 +193,22 @@ public class SmeltItemAction extends BaseAction {
             furnacePrepared = true;
             furnace.setChanged();
             return;
+        }
+
+        var furnaceState = serverLevel.getBlockState(furnacePos);
+        boolean isLit = furnaceState.hasProperty(BlockStateProperties.LIT)
+            && furnaceState.getValue(BlockStateProperties.LIT);
+        if (!isLit && furnace.getItem(SLOT_FUEL).isEmpty()) {
+            queueFuel(furnace);
+            if (furnace.getItem(SLOT_FUEL).isEmpty()) {
+                result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                    "Smelting stopped because fuel ran out")
+                    .retryable(true).partialSuccess(smelted > 0)
+                    .observation("missing_item", "coal")
+                    .observation("missing_quantity", 1).build();
+                return;
+            }
+            furnace.setChanged();
         }
 
         if (ticksRunning % TICKS_PER_CHECK == 0) {
@@ -318,6 +355,17 @@ public class SmeltItemAction extends BaseAction {
             }
         }
         return null;
+    }
+
+    private boolean inputSmeltsTo(ServerLevel level, ItemStack input, Item outputItem) {
+        for (AbstractCookingRecipe candidate : level.getServer().getRecipeManager()
+                .getAllRecipesFor(RecipeType.SMELTING)) {
+            if (candidate.getIngredients().isEmpty()
+                    || !candidate.getIngredients().get(0).test(input)) continue;
+            ItemStack output = candidate.getResultItem(level.registryAccess());
+            if (!output.isEmpty() && output.is(outputItem)) return true;
+        }
+        return false;
     }
 
     private AbstractCookingRecipe findCookingRecipeByOutput(ServerLevel level, Item outputItem) {

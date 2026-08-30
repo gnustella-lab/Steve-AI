@@ -314,7 +314,7 @@ public class ActionExecutor {
     /** Envia feedback pelo chat do servidor quando habilitado. */
     private void sendToGUI(String steveName, String message) {
         if (!steve.level().isClientSide && SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
-            steve.sendChatMessage(message);
+            steve.sendFeedback(message);
         }
     }
 
@@ -422,7 +422,7 @@ public class ActionExecutor {
                 try {
                     executeTask(nextTask);
                 } catch (Throwable error) {
-                    handleActionException("starting task " + nextTask.getAction(), error);
+                    handleActionStartException(nextTask, error);
                 }
                 ticksSinceLastAction = 0;
                 return;
@@ -714,6 +714,23 @@ public class ActionExecutor {
         steve.getMemory().setCurrentGoal("");
     }
 
+    private void handleActionStartException(Task task, Throwable error) {
+        if (currentAction != null) {
+            handleActionException("starting task " + task.getAction(), error);
+            return;
+        }
+        SteveMod.LOGGER.error("Steve '{}' failed while starting task {}",
+            steve.getSteveName(), task, error);
+        ActionResult failure = ActionResult.failure(ActionResult.ERROR_UNKNOWN,
+            "Action factory/start exception: " + error.getClass().getSimpleName())
+            .retryable(true).requiresReplanning(true).build();
+        if (autonomyManaged) {
+            publishCompletion(task, failure, task == null ? "unknown task" : task.toString());
+        } else {
+            handleCommandPathFailure(task, failure);
+        }
+    }
+
     private void handleActionException(String phase, Throwable error) {
         SteveMod.LOGGER.error("Steve '{}' failed while {}", steve.getSteveName(), phase, error);
         if (autonomyManaged && currentAction != null) {
@@ -782,4 +799,3 @@ public class ActionExecutor {
         }
     }
 }
-

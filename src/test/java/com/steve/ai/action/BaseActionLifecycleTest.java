@@ -31,6 +31,19 @@ class BaseActionLifecycleTest {
         assertEquals(1, action.finishCount);
     }
 
+    @Test
+    void runtimeExceptionBecomesStructuredFailureAndStillCleansUpExactlyOnce() {
+        ThrowingAction action = new ThrowingAction();
+
+        action.start();
+        action.tick();
+
+        assertEquals(ActionResult.ERROR_UNKNOWN, action.getResult().getErrorCode());
+        action.tick();
+        assertEquals(1, action.finishCount);
+        assertEquals(1, action.cancelCleanupCount);
+    }
+
     private static final class TestAction extends BaseAction {
         private final boolean completeOnStart;
         private int finishCount;
@@ -65,5 +78,20 @@ class BaseActionLifecycleTest {
         public String getDescription() {
             return "test";
         }
+    }
+
+    private static final class ThrowingAction extends BaseAction {
+        private int finishCount;
+        private int cancelCleanupCount;
+
+        private ThrowingAction() {
+            super(null, new Task("explode", Map.of()));
+        }
+
+        @Override protected void onStart() { }
+        @Override protected void onTick() { throw new IllegalStateException("boom"); }
+        @Override protected void onCancel() { cancelCleanupCount++; }
+        @Override protected void onFinish() { finishCount++; }
+        @Override public String getDescription() { return "explode"; }
     }
 }

@@ -88,6 +88,55 @@ class StructuredMemoryTest {
     }
 
     @Test
+    void protectedFactsRemainAvailableAcrossUnrelatedGoalRecallButNotAcrossDimensions() {
+        SteveMemory memory = new SteveMemory(null);
+        memory.rememberWorldFact(new WorldFact(WorldFact.Kind.PROTECTED, "spawn_claim",
+            "minecraft:overworld", new BlockPos(4, 64, 4), 95L, 1.0, 24_000L, Map.of()));
+        memory.rememberWorldFact(WorldFact.resource("diamond_ore", "minecraft:the_nether",
+            new BlockPos(2, 64, 2), 95L, 1.0));
+
+        List<WorldFact> relevant = memory.getRelevantFacts("craft iron pickaxe", 10,
+            100L, "minecraft:overworld", BlockPos.ZERO);
+
+        assertTrue(relevant.stream().anyMatch(fact -> fact.kind() == WorldFact.Kind.PROTECTED),
+            "Safety memory must remain available even when its text does not match the current goal");
+        assertTrue(relevant.stream().noneMatch(fact -> "minecraft:the_nether".equals(fact.dimension())),
+            "Contextual recall must not leak facts from another dimension");
+    }
+
+    @Test
+    void contextualRecallRanksConfidenceAndDropsIrrelevantOrExpiredFacts() {
+        SteveMemory memory = new SteveMemory(null);
+        memory.rememberWorldFact(WorldFact.resource("iron_ore", "overworld",
+            new BlockPos(10, 64, 0), 90L, 0.2));
+        memory.rememberWorldFact(WorldFact.resource("iron_ore", "overworld",
+            new BlockPos(0, 64, 10), 90L, 0.9));
+        memory.rememberWorldFact(WorldFact.resource("oak_log", "overworld",
+            new BlockPos(4, 64, 4), 90L, 1.0));
+        memory.rememberWorldFact(new WorldFact(WorldFact.Kind.RESOURCE, "iron_ore", "overworld",
+            new BlockPos(5, 64, 5), 1L, 1.0, 5L, Map.of()));
+
+        List<WorldFact> relevant = memory.getRelevantFacts("iron ore", 10,
+            100L, "overworld", new BlockPos(0, 64, 0));
+
+        assertEquals(2, relevant.size());
+        assertEquals(new BlockPos(0, 64, 10), relevant.get(0).position());
+        assertTrue(relevant.stream().noneMatch(fact -> "oak_log".equals(fact.key())));
+        assertTrue(relevant.stream().noneMatch(fact -> fact.position().equals(new BlockPos(5, 64, 5))));
+    }
+
+    @Test
+    void malformedActivePlanDoesNotCrashLoadAndCanBeCleared() {
+        CompoundTag tag = new CompoundTag();
+        tag.put("ActivePlan", new CompoundTag());
+        SteveMemory memory = new SteveMemory(null);
+        memory.loadFromNBT(tag);
+        assertTrue(memory.getActivePlan() != null);
+        memory.clearActivePlan();
+        assertEquals(null, memory.getActivePlan());
+    }
+
+    @Test
     void persistsActiveGoalEpisodesAndSpatialFactsWithHardBounds() {
         SteveMemory memory = new SteveMemory(null);
         AgentGoal goal = AgentGoal.create("Gather oak logs", GoalOrigin.USER,

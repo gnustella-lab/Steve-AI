@@ -5,6 +5,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -54,6 +55,14 @@ public class EquipItemAction extends BaseAction {
             return;
         }
 
+        if (slot.getType() == net.minecraft.world.entity.EquipmentSlot.Type.ARMOR
+                && (!(targetItem instanceof ArmorItem armorItem)
+                    || armorItem.getEquipmentSlot() != slot)) {
+            result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
+                itemName + " cannot be equipped in " + slotName).build();
+            return;
+        }
+
         int available = steve.getSteveInventory().count(targetItem);
         if (available <= 0) {
             result = ActionResult.failure(ActionResult.ERROR_RESOURCE, "I don't have any " + itemName).build();
@@ -69,7 +78,10 @@ public class EquipItemAction extends BaseAction {
         ItemStack previouslyEquipped = steve.getSteveInventory().swapEquipment(slot, toEquip);
         // Return previously equipped item to inventory
         if (previouslyEquipped != null && !previouslyEquipped.isEmpty()) {
-            steve.getSteveInventory().insert(previouslyEquipped);
+            ItemStack remainder = steve.getSteveInventory().insert(previouslyEquipped);
+            if (!remainder.isEmpty()) {
+                steve.spawnAtLocation(remainder);
+            }
         }
 
         steve.syncEquipmentFromInventory();

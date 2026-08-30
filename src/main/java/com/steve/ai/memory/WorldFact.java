@@ -36,7 +36,7 @@ public final class WorldFact {
             long lastSeenTick, double confidence, long ttlTicks, Map<String, String> details) {
         this.kind = kind == null ? Kind.LANDMARK : kind;
         this.key = bounded(key, 128);
-        this.dimension = bounded(dimension, 128);
+        this.dimension = bounded(dimension, 128).toLowerCase(java.util.Locale.ROOT);
         this.position = position;
         this.lastSeenTick = Math.max(0L, lastSeenTick);
         this.confidence = sanitizeConfidence(confidence);
@@ -67,7 +67,7 @@ public final class WorldFact {
     public boolean isExpired(long now) {
         if (ttlTicks <= 0) return false;
         if (now < lastSeenTick) return true;
-        return now - lastSeenTick > ttlTicks;
+        return now - lastSeenTick >= ttlTicks;
     }
 
     public CompoundTag save() {

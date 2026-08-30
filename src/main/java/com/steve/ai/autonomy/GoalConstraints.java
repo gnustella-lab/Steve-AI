@@ -38,7 +38,15 @@ public record GoalConstraints(
     public static GoalConstraints fromDescription(String description) {
         String text = description == null ? "" : description.toLowerCase(Locale.ROOT)
             .replaceAll("[^a-z0-9_:\\- ]", " ").replaceAll("\\s+", " ").trim();
-        Pattern pattern = Pattern.compile("\\b(?:get|gather|collect|obtain|bring|make|craft|mine)"
+        Pattern combatPattern = Pattern.compile("\\b(?:attack|fight|kill|defeat)\\s+"
+            + "(?:(\\d+)\\s+)?(?:the\\s+)?([a-z0-9_:-]+)");
+        Matcher combat = combatPattern.matcher(text);
+        if (combat.find()) {
+            int quantity = combat.group(1) == null ? 1 : parseQuantity(combat.group(1));
+            String target = normalizeEntity(combat.group(2));
+            return new GoalConstraints("", quantity, target, null, null, 2, true, false);
+        }
+        Pattern pattern = Pattern.compile("\\b(?:get|gather|collect|obtain|bring|make|craft|mine|smelt)"
             + "(?:\\s+me)?\\s+(?:(\\d+)\\s+)?([a-z0-9_:-]+(?:\\s+[a-z0-9_:-]+)?)");
         Matcher matcher = pattern.matcher(text);
         if (!matcher.find()) return empty();
@@ -114,6 +122,14 @@ public record GoalConstraints(
         } catch (NumberFormatException ignored) {
             return 1;
         }
+    }
+
+    private static String normalizeEntity(String value) {
+        String normalized = value == null ? "" : value.trim().replace(' ', '_');
+        if (normalized.endsWith("s") && !normalized.endsWith("ss")) {
+            return normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private static String normalizeItem(String value) {

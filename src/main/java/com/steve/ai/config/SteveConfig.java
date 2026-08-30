@@ -43,10 +43,13 @@ public class SteveConfig {
     // ── Behavior ────────────────────────────────────────────────────
     public static final ForgeConfigSpec.IntValue ACTION_TICK_DELAY;
     public static final ForgeConfigSpec.BooleanValue ENABLE_CHAT_RESPONSES;
+    public static final ForgeConfigSpec.ConfigValue<String> CHAT_FEEDBACK_SCOPE;
     public static final ForgeConfigSpec.IntValue MAX_ACTIVE_STEVES;
     public static final ForgeConfigSpec.IntValue INVENTORY_SLOTS;
     public static final ForgeConfigSpec.BooleanValue SURVIVAL_CONSTRUCTION;
     public static final ForgeConfigSpec.BooleanValue CREATIVE_CONSTRUCTION;
+    public static final ForgeConfigSpec.BooleanValue ALLOW_TELEPORT;
+    public static final ForgeConfigSpec.BooleanValue ALLOW_FLIGHT;
 
     // ── Autonomous executive ────────────────────────────────────────
     public static final ForgeConfigSpec.BooleanValue AUTONOMY_ENABLED;
@@ -185,6 +188,10 @@ public class SteveConfig {
             .comment("Allow Steves to respond in chat")
             .define("enableChatResponses", true);
 
+        CHAT_FEEDBACK_SCOPE = builder
+            .comment("Who receives operational Steve chat: controller (default), owner, authorized, or broadcast. Broadcast is never implicit.")
+            .define("chatFeedbackScope", "controller");
+
         MAX_ACTIVE_STEVES = builder
             .comment("Maximum number of Steves that can be active simultaneously")
             .defineInRange("maxActiveSteves", 10, 1, 50);
@@ -200,6 +207,14 @@ public class SteveConfig {
         CREATIVE_CONSTRUCTION = builder
             .comment("When true, blocks are placed without consuming items from inventory.")
             .define("creativeConstruction", false);
+
+        ALLOW_TELEPORT = builder
+            .comment("Global hard gate for Steve teleport capability. Per-Steve capability is also required.")
+            .define("allowTeleport", false);
+
+        ALLOW_FLIGHT = builder
+            .comment("Global hard gate for Steve flight capability. Per-Steve capability is also required.")
+            .define("allowFlight", false);
 
         builder.pop();
 
@@ -245,4 +260,3 @@ public class SteveConfig {
         return resolveApiKey(GEMINI_API_KEY.get(), "STEVE_GEMINI_API_KEY");
     }
 }
-

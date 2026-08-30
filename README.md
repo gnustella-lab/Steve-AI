@@ -137,6 +137,12 @@ HTTP remains asynchronous. World, inventory, navigation, entity, and NBT mutatio
 **Tick-Based Execution**
 Actions run incrementally across multiple game ticks rather than blocking. This prevents server freezes and maintains responsiveness. Each action's `tick()` method does minimal work per frame and tracks progress internally.
 
+**Fail-closed mobility**
+Survival pathfinding is the default. Teleport and flight require both a global config gate (`allowTeleport` / `allowFlight`) and a server-owned per-Steve capability. The LLM cannot grant `ALLOW_TELEPORT`, `ALLOW_FLIGHT`, or `ALLOW_CREATIVE_BUILD` through task parameters. Combat never teleports. Destinations in solid blocks, lava, the void, unloaded chunks, or protected regions are rejected.
+
+**Private operational chat**
+Goal progress, failures, and other operational messages go to the current controller, then the owner, then explicitly authorized players. They are never broadcast to the whole server unless `chatFeedbackScope = "broadcast"` is set. Console-issued or ownerless Steves log instead of picking a nearby stranger.
+
 **Goal-driven planning**
 The normal mode uses receding-horizon planning. The LLM proposes only a small number of executable tasks. Steve observes again after progress or failure, verifies deterministic conditions, and requests another horizon when the goal remains incomplete. This keeps context and API spending bounded while allowing the world to change.
 
@@ -273,6 +279,14 @@ idleThinkInterval = 1200
 perceptionIntervalTicks = 20
 proactiveMaintenance = false
 
+[behavior]
+enableChatResponses = true
+chatFeedbackScope = "controller" # controller, owner, authorized, broadcast
+survivalConstruction = true
+creativeConstruction = false
+allowTeleport = false
+allowFlight = false
+
 [groq]
 apiKey = ""
 model = "llama-3.1-8b-instant"
@@ -302,7 +316,7 @@ Useful commands:
 
 - The default `GOAL_DRIVEN` mode can continue user goals across action failures, missing materials, tool prerequisites, and bounded replans. It does not invent unrelated goals.
 - `PROACTIVE` is opt-in and maintenance is disabled by default. It must not be used as a griefing or unrestricted construction policy.
-- A goal is marked complete only when a deterministic evaluator can verify it or when an unsupported semantic goal has a successful bounded terminal action. Deterministic inventory and delivery goals require observed quantities or delivery results.
+- A goal is marked complete only when a deterministic evaluator can verify it. Combat requires an observed kill; missing targets, timeouts, and unconstrained goals are not treated as success just because an action returned.
 - Protected regions and descriptor permissions remain authoritative. The executive never falls back to commands, shell execution, reflection, or arbitrary Java execution.
 - Resource search and mining are bounded. Steve can still become `BLOCKED` when the configured retry, replan, or LLM budget is exhausted.
 - Crafting and smelting are registered and integrated with prerequisite reporting, but full survival reliability depends on the actual world, recipes, containers, navigation, and available materials.
@@ -312,9 +326,8 @@ Useful commands:
 Planned follow-up work:
 - richer navigation alternatives and path quality scoring
 - more structure templates and deterministic construction planning
-- shared job board and resource reservations for multi-agent work
+- shared job board and role assignment on top of resource reservations
 - voice commands via a separate, permissioned input layer
-- additional GameTests for restart, protected regions, and long-running goals
 - optional compact memory summaries for very long sessions
 
 ## Why We Made This

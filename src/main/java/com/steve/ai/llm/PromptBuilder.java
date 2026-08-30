@@ -76,7 +76,12 @@ public final class PromptBuilder {
         prompt.append("=== CURRENT OBSERVATION ===\n");
         prompt.append(context.getObservation() == null ? "unavailable" : context.getObservation().toPromptContext()).append('\n');
         prompt.append("=== RELEVANT MEMORY ===\n");
-        appendList(prompt, context.getRelevantMemory(), "none");
+        if (context.getRelevantMemory().isEmpty() && context.getObservation() != null
+                && !context.getObservation().getRelevantMemory().isEmpty()) {
+            prompt.append("included in CURRENT OBSERVATION\n");
+        } else {
+            appendList(prompt, context.getRelevantMemory(), "none");
+        }
         prompt.append("=== RECENT COMPLETED STEPS ===\n");
         appendList(prompt, context.getRecentCompletedSteps(), "none");
         prompt.append("=== LAST ACTION RESULT ===\n");

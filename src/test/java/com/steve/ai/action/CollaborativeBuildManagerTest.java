@@ -63,6 +63,37 @@ class CollaborativeBuildManagerTest {
     }
 
     @Test
+    void abandoningWorkerReleasesItsOutstandingReservation() {
+        BlockPlacement placement = new BlockPlacement(new BlockPos(1, 64, 1), Blocks.STONE);
+        CollaborativeBuildManager.CollaborativeBuild build =
+            new CollaborativeBuildManager.CollaborativeBuild("lease-abandon", List.of(placement), BlockPos.ZERO);
+
+        assertSame(placement, CollaborativeBuildManager.getNextBlock(build, "SteveA", 10L));
+        CollaborativeBuildManager.abandonBuild(build, "SteveA");
+
+        assertSame(placement, CollaborativeBuildManager.getNextBlock(build, "SteveB", 11L));
+        CollaborativeBuildManager.markBlockPlaced(build, "SteveB");
+        assertTrue(build.isComplete());
+    }
+
+    @Test
+    void expiredReservationCanBeReassignedWithoutDuplicatingProgress() {
+        BlockPlacement placement = new BlockPlacement(new BlockPos(1, 64, 1), Blocks.STONE);
+        CollaborativeBuildManager.CollaborativeBuild build =
+            new CollaborativeBuildManager.CollaborativeBuild("lease-expiry", List.of(placement), BlockPos.ZERO);
+
+        assertSame(placement, CollaborativeBuildManager.getNextBlock(build, "SteveA", 0L));
+        assertSame(placement, CollaborativeBuildManager.getNextBlock(build, "SteveB",
+            CollaborativeBuildManager.RESERVATION_TTL_TICKS + 1));
+
+        CollaborativeBuildManager.markBlockPlaced(build, "SteveA");
+        assertEquals(0, build.getBlocksPlaced(), "Expired owner must not complete a reassigned reservation");
+        CollaborativeBuildManager.markBlockPlaced(build, "SteveB");
+        assertEquals(1, build.getBlocksPlaced());
+        assertTrue(build.isComplete());
+    }
+
+    @Test
     void emptyBuildHasStableProgress() {
         CollaborativeBuildManager.CollaborativeBuild build =
             new CollaborativeBuildManager.CollaborativeBuild("empty", List.of(), BlockPos.ZERO);

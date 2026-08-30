@@ -76,6 +76,23 @@ public class CraftItemAction extends BaseAction {
             return;
         }
 
+        CraftingPlanner.CraftStep cookingStep = plan.steps().stream()
+            .filter(step -> step.recipe() instanceof net.minecraft.world.item.crafting.AbstractCookingRecipe)
+            .findFirst()
+            .orElse(null);
+        if (cookingStep != null) {
+            int requiredQuantity = Math.max(1,
+                cookingStep.resultCount() * cookingStep.timesToCraft());
+            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                "Crafting dependency requires server-side smelting: " + cookingStep.resultItem())
+                .retryable(true)
+                .observation("required_action", "smelt")
+                .observation("required_item", cookingStep.resultItem())
+                .observation("required_quantity", requiredQuantity)
+                .build();
+            return;
+        }
+
         steve.sendChatMessage("I'll craft " + quantity + " " + itemName
             + " in " + plan.getTotalSteps() + " steps.");
     }
@@ -205,6 +222,12 @@ public class CraftItemAction extends BaseAction {
 
     @Override
     protected void onCancel() {
+        steve.setFlying(false);
+        steve.getNavigation().stop();
+    }
+
+    @Override
+    protected void onFinish() {
         steve.setFlying(false);
         steve.getNavigation().stop();
     }

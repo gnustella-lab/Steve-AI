@@ -55,26 +55,40 @@ public class DropItemAction extends BaseAction {
             return;
         }
 
+        int remaining = quantity - dropped;
         int available = steve.getSteveInventory().count(targetItem);
-        if (available <= 0) {
-            result = ActionResult.failure(ActionResult.ERROR_RESOURCE, "I don't have any " + itemName).build();
+        if (available < remaining) {
+            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                "Need " + remaining + " more " + itemName + " but only have " + available)
+                .retryable(true)
+                .observation("missing_item", itemName)
+                .observation("missing_quantity", Math.max(1, remaining - available))
+                .build();
             return;
         }
 
-        int toDrop = Math.min(quantity - dropped, available);
-        java.util.List<ItemStack> droppedItems = steve.getSteveInventory().drop(targetItem, toDrop);
-
+        java.util.List<ItemStack> droppedItems = steve.getSteveInventory().drop(targetItem, remaining);
         if (droppedItems.isEmpty()) {
             result = ActionResult.failure(ActionResult.ERROR_UNKNOWN, "Could not drop items").build();
             return;
         }
 
+        int droppedNow = 0;
         for (ItemStack stack : droppedItems) {
+            droppedNow += stack.getCount();
             steve.spawnAtLocation(stack);
         }
 
-        dropped += toDrop;
-        result = ActionResult.success("Dropped " + dropped + " " + itemName).build();
+        dropped += droppedNow;
+        if (dropped < quantity) {
+            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                "Dropped only " + dropped + " of " + quantity + " " + itemName)
+                .partialSuccess(dropped > 0).requiresReplanning(true)
+                .observation("dropped", dropped).observation("requested", quantity).build();
+            return;
+        }
+        result = ActionResult.success("Dropped " + dropped + " " + itemName)
+            .observation("dropped", dropped).observation("requested", quantity).build();
     }
 
     @Override

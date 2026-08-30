@@ -7,6 +7,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.memory.StructureRegistry;
 import com.steve.ai.security.PermissionManager;
+import com.steve.ai.security.AgentCapability;
 import com.steve.ai.structure.BlockPlacement;
 import com.steve.ai.structure.StructureGenerators;
 import com.steve.ai.structure.StructureTemplateLoader;
@@ -58,7 +59,7 @@ public class BuildStructureAction extends BaseAction {
         if (collaborativeBuild != null) {
             isCollaborative = true;
             
-            steve.setFlying(true);
+            enableAuthorizedBuildMobility();
             
             SteveMod.LOGGER.info("Steve '{}' JOINING collaborative build of '{}' ({}% complete) - FLYING & INVULNERABLE ENABLED", 
                 steve.getSteveName(), structureType, collaborativeBuild.getProgressPercentage());
@@ -184,7 +185,7 @@ public class BuildStructureAction extends BaseAction {
                 steve.getSteveName(), structureType, clearPos);
         }
         
-        steve.setFlying(true);
+        enableAuthorizedBuildMobility();
         
         SteveMod.LOGGER.info("Steve '{}' starting COLLABORATIVE build of {} at {} with {} blocks using materials: {} [FLYING ENABLED]", 
             steve.getSteveName(), structureType, clearPos, buildPlan.size(), buildMaterials);
@@ -213,7 +214,8 @@ public class BuildStructureAction extends BaseAction {
             
             for (int i = 0; i < BLOCKS_PER_TICK; i++) {
                 BlockPlacement placement = 
-                    CollaborativeBuildManager.getNextBlock(collaborativeBuild, steve.getSteveName());
+                    CollaborativeBuildManager.getNextBlock(
+                        collaborativeBuild, steve.getSteveName(), currentServerTick());
                 
                 if (placement == null) {
                     if (ticksRunning % 20 == 0) {
@@ -226,8 +228,15 @@ public class BuildStructureAction extends BaseAction {
                 BlockPos pos = placement.pos;
                 double distance = Math.sqrt(steve.blockPosition().distSqr(pos));
                 if (distance > 5) {
-                    steve.teleportTo(pos.getX() + 2, pos.getY(), pos.getZ() + 2);
-                    SteveMod.LOGGER.info("Steve '{}' teleported to block at {}", steve.getSteveName(), pos);
+                    BlockPos approach = pos.offset(2, 0, 2);
+                    if (!steve.teleportSafely(approach)) {
+                        steve.getNavigation().moveTo(
+                            approach.getX() + 0.5, approach.getY(), approach.getZ() + 0.5,
+                            BUILD_SPEED_MULTIPLIER);
+                        CollaborativeBuildManager.returnBlock(
+                            collaborativeBuild, steve.getSteveName(), placement);
+                        break;
+                    }
                 }
                 
                 steve.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
@@ -250,8 +259,9 @@ public class BuildStructureAction extends BaseAction {
                     return;
                 }
 
-                boolean isSurvival = com.steve.ai.config.SteveConfig.SURVIVAL_CONSTRUCTION.get()
-                    && !com.steve.ai.config.SteveConfig.CREATIVE_CONSTRUCTION.get();
+                boolean creativeAuthorized = com.steve.ai.config.SteveConfig.CREATIVE_CONSTRUCTION.get()
+                    && steve.getAccessProfile().hasCapability(AgentCapability.ALLOW_CREATIVE_BUILD);
+                boolean isSurvival = !creativeAuthorized;
                 if (isSurvival && !existingState.equals(blockState) && !blockState.isAir()) {
                     net.minecraft.world.item.Item neededItem = blockState.getBlock().asItem();
                     if (neededItem != net.minecraft.world.item.Items.AIR) {
@@ -321,9 +331,21 @@ public class BuildStructureAction extends BaseAction {
 
     @Override
     protected void onCancel() {
-        steve.setFlying(false); // Disable flying when cancelled
-        steve.getNavigation().stop();
         abandonCollaborativeBuild();
+    }
+
+    @Override
+    protected void onFinish() {
+        steve.setFlying(false);
+        steve.releaseInvulnerability(com.steve.ai.entity.InvulnerabilityScopes.BUILDING);
+        steve.getNavigation().stop();
+    }
+
+    private void enableAuthorizedBuildMobility() {
+        steve.setFlying(true);
+        if (steve.isFlying()) {
+            steve.acquireInvulnerability(com.steve.ai.entity.InvulnerabilityScopes.BUILDING);
+        }
     }
 
     @Override
@@ -344,6 +366,11 @@ public class BuildStructureAction extends BaseAction {
         if (collaborativeBuild != null) {
             CollaborativeBuildManager.abandonBuild(collaborativeBuild, steve.getSteveName());
         }
+    }
+
+    private long currentServerTick() {
+        return steve.level() instanceof ServerLevel level && level.getServer() != null
+            ? level.getServer().getTickCount() : 0L;
     }
 
     private void registerCompletedStructure() {
@@ -575,4 +602,3 @@ public class BuildStructureAction extends BaseAction {
     }
     
 }
-

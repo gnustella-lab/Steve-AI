@@ -68,7 +68,7 @@ public class ObservationSnapshotTest {
 
         // Assert content
         assertTrue(prompt.contains("Position: [10, 64, 20] in overworld"));
-        assertTrue(prompt.contains("Time: Day 3, morning | Biome: plains | Light: 15"));
+        assertTrue(prompt.contains("Time: Day 3, dawn | Biome: plains | Light: 15"));
         assertTrue(prompt.contains("Health: 20/20"));
         assertTrue(prompt.contains("Inventory:\n- oak_log: 32"));
         assertTrue(prompt.contains("Equipment: main_hand: iron_pickaxe"));
@@ -80,7 +80,7 @@ public class ObservationSnapshotTest {
         // Expected string format
         String expected = """
             Position: [10, 64, 20] in overworld
-            Time: Day 3, morning | Biome: plains | Light: 15
+            Time: Day 3, dawn | Biome: plains | Light: 15
             Health: 20/20
             Inventory:
             - oak_log: 32

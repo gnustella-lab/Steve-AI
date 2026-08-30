@@ -20,6 +20,7 @@ public final class ActionResult {
     public static final String ERROR_TOOL_BROKEN = "tool_broken";
     public static final String ERROR_PROTECTED = "protected";
     public static final String ERROR_ENTITY_GONE = "entity_gone";
+    public static final String ERROR_TARGET_NOT_FOUND = "target_not_found";
     public static final String ERROR_PLAYER_OFFLINE = "player_offline";
     public static final String ERROR_CHUNK_UNLOADED = "chunk_unloaded";
     public static final String ERROR_VALIDATION = "validation";

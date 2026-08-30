@@ -45,6 +45,22 @@ class SteveInventoryTest {
     }
 
     @Test
+    void withdrawAndDropPreserveStackDurabilityMetadata() {
+        SteveInventory inventory = new SteveInventory(3);
+        ItemStack pickaxe = new ItemStack(Items.IRON_PICKAXE);
+        pickaxe.setDamageValue(117);
+        inventory.insert(pickaxe);
+
+        ItemStack withdrawn = inventory.withdraw(Items.IRON_PICKAXE, 1);
+        assertEquals(117, withdrawn.getDamageValue());
+
+        inventory.insert(withdrawn);
+        java.util.List<ItemStack> dropped = inventory.drop(Items.IRON_PICKAXE, 1);
+        assertEquals(1, dropped.size());
+        assertEquals(117, dropped.get(0).getDamageValue());
+    }
+
+    @Test
     void drainingForDeathOrTransferCannotDuplicateItems() {
         SteveInventory inventory = new SteveInventory(2);
         inventory.insert(new ItemStack(Items.BREAD, 5));

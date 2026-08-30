@@ -43,7 +43,6 @@ public final class AutonomyController {
 
     private AutonomyPlanner planner;
     private AgentGoal activeGoal;
-    private Plan currentPlan;
     private ObservationSnapshot lastObservation;
     private ActionResult lastActionResult;
     private RecoveryDecision pendingRecovery;
@@ -116,6 +115,12 @@ public final class AutonomyController {
             }
         }
 
+        ActionExecutor.ActionStart actionStart = executor.consumeStartedAction();
+        if (actionStart != null && activeGoal != null) {
+            activeGoal.getProgress().recordAttempt(now);
+            Plan currentPlan = getCurrentPlan();
+            if (currentPlan != null) currentPlan.markCurrentStepActive(now);
+        }
         ActionExecutor.ActionCompletion completion = executor.consumeCompletedAction();
         if (completion != null) {
             handleActionCompletion(completion, now);
@@ -195,13 +200,13 @@ public final class AutonomyController {
 
         AgentGoal goal = AgentGoal.create(description, GoalOrigin.USER,
             GoalPriority.USER_INTERRUPT,
-            null, now);
+            null, now, configuredGoalBudget());
         goal.setConstraints(GoalConstraints.fromDescription(description));
         if (controllerUuid != null) goal.putMetadata("controllerUuid", controllerUuid.toString());
         if (interruptedGoal != null) goal.putMetadata("interruptedGoalId", interruptedGoal.toString());
         goalQueue.enqueue(goal);
         activeGoal = null;
-        currentPlan = null;
+        setCurrentPlan(null);
         lastActionResult = null;
         lastFailure = "";
         failureTracker.clear();
@@ -226,7 +231,7 @@ public final class AutonomyController {
             steve.getMemory().recordGoalOutcome(activeGoal, "cancelled by stop", now);
         }
         activeGoal = null;
-        currentPlan = null;
+        setCurrentPlan(null);
         steve.getMemory().clearActiveGoal();
         moveTo(AgentState.IDLE, "absolute stop");
         sendFeedback("Stopped. The cancelled goal will not resume automatically.", now);
@@ -293,7 +298,7 @@ public final class AutonomyController {
     public AgentState getState() { return stateMachine.getCurrentState(); }
     public AgentGoal getActiveGoal() { return activeGoal != null ? activeGoal : goalQueue.getActive(); }
     public GoalQueue getGoalQueue() { return goalQueue; }
-    public Plan getCurrentPlan() { return currentPlan; }
+    public Plan getCurrentPlan() { return steve.getMemory().getActivePlan(); }
     public ObservationSnapshot getLastObservation() { return lastObservation; }
     public ActionResult getLastActionResult() { return lastActionResult; }
     public String getLastFailure() { return lastFailure; }
@@ -311,7 +316,7 @@ public final class AutonomyController {
         AgentGoal goal = getActiveGoal();
         return "mode=" + getMode() + ", state=" + getState()
             + ", goal=" + (goal == null ? "none" : goal.getDescription())
-            + ", plan=" + (currentPlan == null ? "none" : currentPlan.getProgress())
+            + ", plan=" + (getCurrentPlan() == null ? "none" : getCurrentPlan().getProgress())
             + ", queued=" + goalQueue.size()
             + ", replans=" + getReplansUsed()
             + ", llmCalls=" + getLlmCallsUsed()
@@ -333,13 +338,13 @@ public final class AutonomyController {
     }
 
     public void shutdown() {
-        prepareForSave();
         shutdown = true;
         cancelPlanning();
         if (activeGoal != null && !activeGoal.isTerminal()) {
             activeGoal.pause(currentTick());
             steve.getMemory().setActiveGoal(activeGoal);
         }
+        prepareForSave();
         executor.stopAutonomousExecution();
         observationService.clear();
     }
@@ -355,6 +360,13 @@ public final class AutonomyController {
     private void restorePersistedGoal(long now) {
         if (restored) return;
         restored = true;
+        Plan checkpoint = steve.getMemory().getActivePlan();
+        if (checkpoint != null) {
+            // A persisted plan is diagnostic only. Never restore an in-flight mutation or
+            // transfer its task queue back to ActionExecutor after a restart.
+            steve.getMemory().addAction("Restart checkpoint (not resumed): " + checkpoint.toSummary());
+            steve.getMemory().clearActivePlan();
+        }
         AgentGoal persisted = steve.getMemory().getActiveGoal();
         for (AgentGoal pending : steve.getMemory().getPersistedGoals()) {
             if (persisted == null || !pending.getId().equals(persisted.getId())) {
@@ -412,8 +424,7 @@ public final class AutonomyController {
             activeGoal,
             null,
             lastObservation,
-            memory.getRelevantFacts(activeGoal.getDescription(), 8).stream()
-                .map(fact -> fact.kind().name().toLowerCase() + ":" + fact.key()).toList(),
+            lastObservation == null ? List.of() : lastObservation.getRelevantMemory(),
             memory.getRecentActions(8),
             lastActionResult == null ? "" : formatResult(lastActionResult),
             failureTracker.failedApproaches(),
@@ -438,10 +449,19 @@ public final class AutonomyController {
         String description = activeGoal.getDescription().trim();
         String lower = description.toLowerCase(java.util.Locale.ROOT);
         String action;
+        String sourceVerb;
         if (lower.startsWith("craft ")) {
             action = "craft";
-        } else if (lower.startsWith("gather ") || lower.startsWith("mine ")) {
+            sourceVerb = "craft";
+        } else if (lower.startsWith("smelt ")) {
+            action = "smelt";
+            sourceVerb = "smelt";
+        } else if (lower.startsWith("gather ")) {
             action = "gather";
+            sourceVerb = "gather";
+        } else if (lower.startsWith("mine ")) {
+            action = "gather";
+            sourceVerb = "mine";
         } else {
             return false;
         }
@@ -449,21 +469,24 @@ public final class AutonomyController {
         GoalConstraints constraints = activeGoal.getConstraints();
         String target = constraints.targetItem();
         if (target.isBlank()) {
-            String[] tokens = description.substring(action.length()).trim().split("\\s+");
+            String[] tokens = description.substring(sourceVerb.length()).trim().split("\\s+");
             target = tokens.length == 0 ? "" : tokens[tokens.length - 1];
         }
         if (target.isBlank()) return false;
         int quantity = constraints.targetQuantity() > 0 ? constraints.targetQuantity() : 1;
-        Task task = "craft".equals(action)
-            ? new Task("craft", Map.of("item", target, "quantity", quantity))
-            : new Task("gather", Map.of("resource", target, "quantity", quantity));
-        currentPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
+        Task task = switch (action) {
+            case "craft" -> new Task("craft", Map.of("item", target, "quantity", quantity));
+            case "smelt" -> new Task("smelt", Map.of("item", target, "quantity", quantity));
+            default -> new Task("gather", Map.of("resource", target, "quantity", quantity));
+        };
+        Plan currentPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
             executor.getControllingPlayerUuid(), steve.getUUID(),
             SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
             SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
             SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
         currentPlan.loadHorizon(List.of(task), "Deterministic prerequisite: " + description,
             "recipe/resource prerequisite", now);
+        setCurrentPlan(currentPlan);
         executor.acceptAutonomousPlan(currentPlan);
         moveTo(AgentState.EXECUTING, "deterministic prerequisite plan");
         sendFeedback("Preparing prerequisite: " + description, now);
@@ -518,12 +541,13 @@ public final class AutonomyController {
             return;
         }
 
-        currentPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
+        Plan currentPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
             executor.getControllingPlayerUuid(), steve.getUUID(),
             SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
             SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
             SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
         currentPlan.loadHorizon(response.getTasks(), response.getSummary(), "new observation", now);
+        setCurrentPlan(currentPlan);
         executor.acceptAutonomousPlan(currentPlan);
         moveTo(AgentState.EXECUTING, "horizon accepted");
         if (response.getSummary() != null && !response.getSummary().isBlank()) {
@@ -567,6 +591,16 @@ public final class AutonomyController {
 
         if (completion.result().isSuccess()) {
             activeGoal.getBudget().recordProgress();
+            Object actionType = completion.result().getObservation("actionType");
+            Object killedValue = completion.result().getObservation("targetsKilled");
+            if ("combat".equals(actionType) && killedValue instanceof Number killed
+                    && killed.intValue() > 0) {
+                GoalProgress progress = activeGoal.getProgress();
+                int target = activeGoal.getConstraints().targetQuantity() > 0
+                    ? activeGoal.getConstraints().targetQuantity() : 1;
+                progress.record(progress.getCompletedUnits() + killed.intValue(), target, now);
+            }
+            Plan currentPlan = getCurrentPlan();
             if (currentPlan != null) {
                 currentPlan.recordCurrentStepResult(completion.result(), now);
                 currentPlan.advanceToNextTask(now);
@@ -592,7 +626,7 @@ public final class AutonomyController {
                 dimension(), steve.blockPosition(), now, 1.0, 0L, Map.of("message", completion.result().getMessage())));
         }
         executor.stopAutonomousExecution();
-        currentPlan = null;
+        setCurrentPlan(null);
         moveTo(AgentState.RECOVERING, "action result requires evaluation");
         pendingRecovery = recoveryEngine.decide(activeGoal, completion.task(), completion.result(),
             failureTracker, steve.blockPosition());
@@ -632,7 +666,7 @@ public final class AutonomyController {
                     SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
                     SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
                 retryPlan.loadHorizon(List.of(decision.retryTask()), "Retrying with the same bounded task", "deterministic recovery", now);
-                currentPlan = retryPlan;
+                setCurrentPlan(retryPlan);
                 executor.acceptAutonomousPlan(retryPlan);
                 moveTo(AgentState.EXECUTING, "deterministic retry");
             }
@@ -665,7 +699,7 @@ public final class AutonomyController {
         parent.pause(now);
         executor.stopAutonomousExecution();
         AgentGoal prerequisite = AgentGoal.create(description, GoalOrigin.PREREQUISITE,
-            GoalPriority.PREREQUISITE, parent.getId(), now);
+            GoalPriority.PREREQUISITE, parent.getId(), now, configuredGoalBudget());
         prerequisite.setConstraints(GoalConstraints.fromDescription(description));
         prerequisite.putMetadata("parentDescription", parent.getDescription());
         Object controllerUuid = parent.getMetadata().get("controllerUuid");
@@ -674,7 +708,7 @@ public final class AutonomyController {
         }
         goalQueue.enqueue(prerequisite);
         activeGoal = null;
-        currentPlan = null;
+        setCurrentPlan(null);
         steve.getMemory().setActiveGoal(prerequisite);
         moveTo(AgentState.OBSERVING, "created prerequisite goal");
         sendFeedback("I need a prerequisite first: " + description, now);
@@ -712,7 +746,7 @@ public final class AutonomyController {
         steve.getMemory().recordGoalOutcome(activeGoal, "completed: " + reason, now);
         steve.getMemory().clearActiveGoal();
         executor.stopAutonomousExecution();
-        currentPlan = null;
+        setCurrentPlan(null);
         sendFeedback("Done: " + description, now);
         activeGoal = null;
         moveTo(AgentState.COMPLETED, "goal verified");
@@ -728,10 +762,21 @@ public final class AutonomyController {
         if (activeGoal == null) return;
         activeGoal.block(reason, now);
         lastFailure = reason;
+        steve.getMemory().rememberGoal(activeGoal);
         steve.getMemory().recordGoalOutcome(activeGoal, "blocked: " + reason, now);
+        UUID parentId = activeGoal.getParentGoalId();
+        if (parentId != null) {
+            AgentGoal parent = goalQueue.find(parentId);
+            if (parent != null && !parent.isTerminal()) {
+                String parentReason = "Prerequisite blocked: " + reason;
+                parent.block(parentReason, now);
+                steve.getMemory().rememberGoal(parent);
+                steve.getMemory().recordGoalOutcome(parent, "blocked: " + parentReason, now);
+            }
+        }
         steve.getMemory().clearActiveGoal();
         executor.stopAutonomousExecution();
-        currentPlan = null;
+        setCurrentPlan(null);
         sendFeedback("I couldn't continue safely: " + reason, now);
         activeGoal = null;
         moveTo(AgentState.BLOCKED, reason);
@@ -743,7 +788,7 @@ public final class AutonomyController {
                 || idleTicks < SteveConfig.AUTONOMY_IDLE_THINK_INTERVAL.get()) return;
         idleTicks = 0;
         AgentGoal maintenance = AgentGoal.create("Deposit excess inventory into an authorized nearby container",
-            GoalOrigin.MAINTENANCE, GoalPriority.MAINTENANCE, null, now);
+            GoalOrigin.MAINTENANCE, GoalPriority.MAINTENANCE, null, now, configuredGoalBudget());
         goalQueue.enqueue(maintenance);
     }
 
@@ -760,11 +805,21 @@ public final class AutonomyController {
 
     private void sendFeedback(String message, long now) {
         if (message == null || message.isBlank() || !SteveConfig.ENABLE_CHAT_RESPONSES.get()) return;
-        if (message.equals(lastFeedback) && now - lastFeedbackTick < 40) return;
-        if (now - lastFeedbackTick < 20) return;
+        if (lastFeedbackTick != Long.MIN_VALUE
+                && message.equals(lastFeedback) && now - lastFeedbackTick < 40) return;
+        if (lastFeedbackTick != Long.MIN_VALUE && now - lastFeedbackTick < 20) return;
         lastFeedback = message;
         lastFeedbackTick = now;
-        steve.sendChatMessage(message);
+        steve.sendFeedback(message);
+    }
+
+    private GoalBudget configuredGoalBudget() {
+        return GoalBudget.fromConfiguredLimits(
+            SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
+            SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
+            SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(),
+            SteveConfig.AUTONOMY_MAX_CONSECUTIVE_FAILURES.get(),
+            SteveConfig.AUTONOMY_MAX_REPEATED_FAILURE_FINGERPRINT.get());
     }
 
     private void moveTo(AgentState target, String reason) {
@@ -807,5 +862,13 @@ public final class AutonomyController {
     private static String stringMetadata(AgentGoal goal, String key) {
         Object value = goal.getMetadata().get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private void setCurrentPlan(Plan plan) {
+        if (plan == null) {
+            steve.getMemory().clearActivePlan();
+        } else {
+            steve.getMemory().setActivePlan(plan);
+        }
     }
 }

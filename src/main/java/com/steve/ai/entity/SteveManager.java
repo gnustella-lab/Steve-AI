@@ -1,6 +1,7 @@
 package com.steve.ai.entity;
 
 import com.steve.ai.SteveMod;
+import com.steve.ai.action.ResourceReservationBoard;
 import com.steve.ai.config.SteveConfig;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.MobSpawnType;
@@ -82,6 +83,7 @@ public class SteveManager {
         }
         activeSteves.remove(normalizedName, steve);
         stevesByUUID.remove(steve.getUUID(), steve);
+        ResourceReservationBoard.getInstance().releaseAll(steve.getUUID());
         steve.discard();
         return true;
     }

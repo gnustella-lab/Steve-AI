@@ -8,6 +8,7 @@ import com.steve.ai.inventory.SteveInventory;
 import com.steve.ai.memory.SteveMemory;
 import com.steve.ai.security.PermissionManager;
 import com.steve.ai.security.SteveAccessProfile;
+import com.steve.ai.security.MobilityPolicy;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -47,7 +48,7 @@ public class SteveEntity extends PathfinderMob {
     private AutonomyController autonomyController;
     private int tickCounter = 0;
     private boolean isFlying = false;
-    private boolean isInvulnerable = false;
+    private final InvulnerabilityScopes invulnerabilityScopes = new InvulnerabilityScopes();
 
     public SteveEntity(EntityType<? extends PathfinderMob> entityType, Level level) {
         super(entityType, level);
@@ -59,8 +60,6 @@ public class SteveEntity extends PathfinderMob {
         this.setCustomNameVisible(true);
         this.setCanPickUpLoot(true);
         
-        this.isInvulnerable = true;
-        this.setInvulnerable(true);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -234,10 +233,21 @@ public class SteveEntity extends PathfinderMob {
         }
         if (tag.contains("SteveInventory", Tag.TAG_COMPOUND)) {
             inventory.load(tag.getCompound("SteveInventory"));
+            // SteveInventory is the persisted source of truth. Restore vanilla equipment now,
+            // before the periodic entity-to-inventory sync can overwrite loaded tools/armor.
+            syncEquipmentFromInventory();
         }
         if (tag.contains("AccessProfile", Tag.TAG_COMPOUND)) {
             accessProfile.load(tag.getCompound("AccessProfile"));
         }
+
+        // Flight/build invulnerability are transient runtime scopes. Old saves may contain
+        // vanilla NoGravity/Invulnerable flags written by previous versions, so explicitly
+        // clear them instead of resurrecting an unsafe transient state after restart.
+        this.isFlying = false;
+        this.invulnerabilityScopes.clear();
+        this.setNoGravity(false);
+        this.setInvulnerable(false);
     }
 
     @Override
@@ -284,6 +294,7 @@ public class SteveEntity extends PathfinderMob {
         if (!(level() instanceof ServerLevel serverLevel)
                 || !serverLevel.getServer().isSameThread()
                 || !serverLevel.isLoaded(position)
+                || !blockPosition().closerThan(position, 5.0)
                 || PermissionManager.getInstance().isProtected(serverLevel, position)) {
             return false;
         }
@@ -346,11 +357,85 @@ public class SteveEntity extends PathfinderMob {
         return spawnData;
     }
 
+    /**
+     * Sends operational feedback only to identities explicitly associated with this Steve.
+     * Controller is preferred, then owner, then explicitly authorized online players.
+     * If nobody is available the message is logged; unrelated nearby players are never chosen.
+     */
+    public void sendFeedback(String message) {
+        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            SteveMod.LOGGER.info("Steve '{}' feedback: {}", getSteveName(), message);
+            return;
+        }
+
+        UUID controllerUuid = actionExecutor == null ? null : actionExecutor.getControllingPlayerUuid();
+        Player controller = controllerUuid == null ? null : serverLevel.getPlayerByUUID(controllerUuid);
+        UUID ownerUuid = accessProfile.getOwnerUuid();
+        Player owner = ownerUuid == null ? null : serverLevel.getPlayerByUUID(ownerUuid);
+        java.util.Set<UUID> authorizedOnline = new java.util.LinkedHashSet<>();
+        for (UUID authorizedUuid : accessProfile.getAuthorizedPlayers()) {
+            Player authorized = serverLevel.getPlayerByUUID(authorizedUuid);
+            if (isUsablePlayer(authorized)) {
+                authorizedOnline.add(authorizedUuid);
+            }
+        }
+
+        FeedbackRouter.Decision decision = FeedbackRouter.decide(
+            FeedbackRouter.Scope.parse(SteveConfig.CHAT_FEEDBACK_SCOPE.get()),
+            controllerUuid, isUsablePlayer(controller),
+            ownerUuid, isUsablePlayer(owner),
+            authorizedOnline);
+        Component component = feedbackComponent(message);
+        switch (decision.delivery()) {
+            case BROADCAST -> broadcastMessage(message);
+            case PLAYERS -> {
+                boolean delivered = false;
+                for (UUID recipientUuid : decision.recipients()) {
+                    Player recipient = serverLevel.getPlayerByUUID(recipientUuid);
+                    if (isUsablePlayer(recipient)) {
+                        recipient.sendSystemMessage(component);
+                        delivered = true;
+                    }
+                }
+                if (!delivered) {
+                    SteveMod.LOGGER.info("Steve '{}' feedback (recipients offline): {}",
+                        getSteveName(), message);
+                }
+            }
+            case LOG -> SteveMod.LOGGER.info("Steve '{}' feedback (no authorized player online): {}",
+                getSteveName(), message);
+        }
+    }
+
+    public void sendOwnerMessage(String message) {
+        if (this.level().isClientSide || message == null || message.isBlank()
+                || !(level() instanceof ServerLevel serverLevel)) return;
+        UUID ownerUuid = accessProfile.getOwnerUuid();
+        Player owner = ownerUuid == null ? null : serverLevel.getPlayerByUUID(ownerUuid);
+        if (isUsablePlayer(owner)) {
+            owner.sendSystemMessage(feedbackComponent(message));
+        } else {
+            SteveMod.LOGGER.info("Steve '{}' owner message (owner offline/unset): {}",
+                getSteveName(), message);
+        }
+    }
+
+    /** Broadcast is intentionally explicit and must never be the default feedback path. */
+    public void broadcastMessage(String message) {
+        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        Component component = feedbackComponent(message);
+        this.level().players().forEach(player -> player.sendSystemMessage(component));
+    }
+
+    /** @deprecated Use {@link #sendFeedback(String)} for operational messages. */
+    @Deprecated(forRemoval = false)
     public void sendChatMessage(String message) {
-        if (this.level().isClientSide) return;
-        
-        Component chatComponent = Component.literal("<" + getSteveName() + "> " + message);
-        this.level().players().forEach(player -> player.sendSystemMessage(chatComponent));
+        sendFeedback(message);
+    }
+
+    private Component feedbackComponent(String message) {
+        return Component.literal("<" + getSteveName() + "> " + message);
     }
 
     @Override
@@ -390,9 +475,9 @@ public class SteveEntity extends PathfinderMob {
     }
 
     public void setFlying(boolean flying) {
-        this.isFlying = flying;
-        this.setNoGravity(flying);
-        this.setInvulnerableBuilding(flying);
+        boolean enabled = flying && MobilityPolicy.canFly(this);
+        this.isFlying = enabled;
+        this.setNoGravity(enabled);
     }
 
     public boolean isFlying() {
@@ -400,20 +485,48 @@ public class SteveEntity extends PathfinderMob {
     }
 
     /**
-     * Set invulnerability for building (immune to ALL damage: fire, lava, suffocation, fall, etc.)
+     * Acquires a named invulnerability scope. Callers must release the same scope.
+     * Flight state is independent and must not be used as a proxy for this.
      */
-    public void setInvulnerableBuilding(boolean invulnerable) {
-        this.isInvulnerable = invulnerable;
-        this.setInvulnerable(invulnerable); // Minecraft's built-in invulnerability
+    public void acquireInvulnerability(String scope) {
+        invulnerabilityScopes.acquire(scope);
     }
 
-    @Override
-    public boolean hurt(DamageSource source, float amount) {
-        return false;
+    public void releaseInvulnerability(String scope) {
+        invulnerabilityScopes.release(scope);
+    }
+
+    public void clearInvulnerability() {
+        invulnerabilityScopes.clear();
+    }
+
+    /**
+     * Compatibility wrapper for the building invulnerability scope.
+     */
+    public void setInvulnerableBuilding(boolean invulnerable) {
+        if (invulnerable) {
+            invulnerabilityScopes.acquire(InvulnerabilityScopes.BUILDING);
+        } else {
+            invulnerabilityScopes.release(InvulnerabilityScopes.BUILDING);
+        }
+    }
+
+    public boolean isBuildingInvulnerable() {
+        return invulnerabilityScopes.contains(InvulnerabilityScopes.BUILDING);
     }
 
     @Override
     public boolean isInvulnerableTo(DamageSource source) {
+        return invulnerabilityScopes.isActive() || super.isInvulnerableTo(source);
+    }
+
+    /** Performs a policy-checked teleport without loading chunks or crossing protected regions. */
+    public boolean teleportSafely(BlockPos destination) {
+        if (!MobilityPolicy.isSafeTeleportDestination(this, destination)) {
+            return false;
+        }
+        this.teleportTo(destination.getX() + 0.5, destination.getY(), destination.getZ() + 0.5);
+        this.getNavigation().stop();
         return true;
     }
 
@@ -447,4 +560,3 @@ public class SteveEntity extends PathfinderMob {
         return super.causeFallDamage(distance, damageMultiplier, source);
     }
 }
-

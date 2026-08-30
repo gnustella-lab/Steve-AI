@@ -18,6 +18,7 @@ public final class SteveAccessProfile {
 
     private UUID ownerUuid;
     private final Set<UUID> authorizedPlayers = new HashSet<>();
+    private final Set<AgentCapability> capabilities = new HashSet<>();
     private String team = "";
     private String permissionProfile = "default";
 
@@ -66,6 +67,28 @@ public final class SteveAccessProfile {
         return Collections.unmodifiableSet(new HashSet<>(authorizedPlayers));
     }
 
+    /** Grants a server-owned capability. This API is not exposed as an action parameter. */
+    public void grantCapability(AgentCapability capability) {
+        if (capability == null) {
+            throw new IllegalArgumentException("Capability cannot be null");
+        }
+        capabilities.add(capability);
+    }
+
+    public void revokeCapability(AgentCapability capability) {
+        if (capability != null) {
+            capabilities.remove(capability);
+        }
+    }
+
+    public boolean hasCapability(AgentCapability capability) {
+        return capability != null && capabilities.contains(capability);
+    }
+
+    public Set<AgentCapability> getCapabilities() {
+        return Collections.unmodifiableSet(new HashSet<>(capabilities));
+    }
+
     public String getTeam() {
         return team;
     }
@@ -96,6 +119,10 @@ public final class SteveAccessProfile {
             .map(StringTag::valueOf)
             .forEach(authorized::add);
         tag.put("AuthorizedPlayers", authorized);
+        ListTag savedCapabilities = new ListTag();
+        capabilities.stream().map(Enum::name).sorted().map(StringTag::valueOf)
+            .forEach(savedCapabilities::add);
+        tag.put("Capabilities", savedCapabilities);
         tag.putString("Team", team);
         tag.putString("PermissionProfile", permissionProfile);
         return tag;
@@ -105,6 +132,7 @@ public final class SteveAccessProfile {
     public void load(CompoundTag tag) {
         ownerUuid = null;
         authorizedPlayers.clear();
+        capabilities.clear();
         team = "";
         permissionProfile = "default";
         if (tag == null || tag.isEmpty()) {
@@ -123,6 +151,14 @@ public final class SteveAccessProfile {
                 }
             } catch (IllegalArgumentException ignored) {
                 // Dados inválidos antigos são ignorados sem ampliar acesso.
+            }
+        }
+        ListTag savedCapabilities = tag.getList("Capabilities", Tag.TAG_STRING);
+        for (int index = 0; index < savedCapabilities.size(); index++) {
+            try {
+                capabilities.add(AgentCapability.valueOf(savedCapabilities.getString(index)));
+            } catch (IllegalArgumentException ignored) {
+                // Unknown future/invalid capabilities fail closed.
             }
         }
         if (tag.contains("Team", Tag.TAG_STRING)) {

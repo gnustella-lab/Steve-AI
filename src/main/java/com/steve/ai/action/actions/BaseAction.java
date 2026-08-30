@@ -20,14 +20,24 @@ public abstract class BaseAction {
     public void start() {
         if (started) return;
         started = true;
-        onStart();
-        finishIfComplete();
+        try {
+            onStart();
+        } catch (RuntimeException exception) {
+            failFromUnhandledException(exception);
+        } finally {
+            finishIfComplete();
+        }
     }
 
     public void tick() {
         if (!started || isComplete()) return;
-        onTick();
-        finishIfComplete();
+        try {
+            onTick();
+        } catch (RuntimeException exception) {
+            failFromUnhandledException(exception);
+        } finally {
+            finishIfComplete();
+        }
     }
 
     public void cancel() {
@@ -68,7 +78,17 @@ public abstract class BaseAction {
             onFinish();
         }
     }
+
+    private void failFromUnhandledException(RuntimeException exception) {
+        String type = exception == null ? "RuntimeException" : exception.getClass().getSimpleName();
+        result = ActionResult.failure(ActionResult.ERROR_UNKNOWN,
+            "Action failed with " + type).requiresReplanning(true).build();
+        try {
+            onCancel();
+        } catch (RuntimeException ignored) {
+            // Preserve the original structured failure. onFinish still gets one chance to cleanup.
+        }
+    }
     
     public abstract String getDescription();
 }
-

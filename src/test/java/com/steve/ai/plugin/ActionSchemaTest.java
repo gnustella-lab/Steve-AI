@@ -34,6 +34,11 @@ class ActionSchemaTest {
         assertFalse(schema.validate(Map.of("block", "iron_ore", "quantity", 65)).isValid());
         assertFalse(schema.validate(Map.of(
             "block", "iron_ore", "quantity", 8, "command", "/op Steve")).isValid());
+        assertFalse(schema.validate(Map.of(
+            "block", "iron_ore",
+            "quantity", 8,
+            "allowTeleport", true,
+            "capability", "ALLOW_FLIGHT")).isValid());
     }
 
     @Test

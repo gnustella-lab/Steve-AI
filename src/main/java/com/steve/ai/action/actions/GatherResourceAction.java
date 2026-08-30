@@ -61,17 +61,25 @@ public class GatherResourceAction extends BaseAction {
     }
 
     private String normalizeResource(String resource) {
+        if (resource == null || resource.isBlank()) return "";
         String normalized = resource.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
-        return switch (normalized) {
+        String namespace = normalized.contains(":")
+            ? normalized.substring(0, normalized.indexOf(':') + 1) : "";
+        String path = normalized.contains(":")
+            ? normalized.substring(normalized.indexOf(':') + 1) : normalized;
+        String block = switch (path) {
             case "diamond", "diamonds" -> "diamond_ore";
-            case "iron" -> "iron_ore";
+            case "iron", "raw_iron", "iron_ingot" -> "iron_ore";
             case "coal" -> "coal_ore";
-            case "gold" -> "gold_ore";
+            case "gold", "raw_gold", "gold_ingot" -> "gold_ore";
+            case "copper", "raw_copper", "copper_ingot" -> "copper_ore";
             case "redstone" -> "redstone_ore";
             case "lapis", "lapis_lazuli" -> "lapis_ore";
             case "emerald", "emeralds" -> "emerald_ore";
-            default -> normalized;
+            case "cobblestone" -> "stone";
+            default -> path;
         };
+        return namespace + block;
     }
 }
 

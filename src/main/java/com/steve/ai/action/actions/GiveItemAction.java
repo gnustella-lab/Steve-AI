@@ -68,28 +68,42 @@ public class GiveItemAction extends BaseAction {
         }
 
         int available = steve.getSteveInventory().count(targetItem);
-        if (available <= 0) {
-            result = ActionResult.failure(ActionResult.ERROR_RESOURCE, "I don't have any " + itemName).build();
+        if (available < quantity) {
+            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                "Need " + quantity + " " + itemName + " but only have " + available)
+                .retryable(true)
+                .observation("missing_item", itemName)
+                .observation("missing_quantity", Math.max(1, quantity - available))
+                .build();
             return;
         }
 
-        int toGive = Math.min(quantity, available);
-        ItemStack given = steve.getSteveInventory().withdraw(targetItem, toGive);
+        ItemStack given = steve.getSteveInventory().withdraw(targetItem, quantity);
 
         if (given.isEmpty()) {
             result = ActionResult.failure(ActionResult.ERROR_RESOURCE, "Could not withdraw " + itemName).build();
             return;
         }
 
-        if (targetPlayer instanceof ServerPlayer serverPlayer) {
-            if (!serverPlayer.getInventory().add(given)) {
-                targetPlayer.drop(given, false);
-            }
+        if (!(targetPlayer instanceof ServerPlayer serverPlayer)) {
+            steve.getSteveInventory().insert(given);
+            result = ActionResult.failure(ActionResult.ERROR_PLAYER_OFFLINE,
+                "Target is not an active server player").retryable(true).build();
+            return;
+        }
+        int deliveredCount = given.getCount();
+        if (!serverPlayer.getInventory().add(given) && !given.isEmpty()) {
+            targetPlayer.drop(given, false);
         }
 
-        String msg = "Gave " + given.getCount() + " " + itemName
+        String msg = "Gave " + deliveredCount + " " + itemName
             + " to " + targetPlayer.getName().getString();
-        result = ActionResult.success(msg).build();
+        result = ActionResult.success(msg)
+            .observation("delivered", true)
+            .observation("deliveredItem", itemName)
+            .observation("deliveredQuantity", deliveredCount)
+            .observation("recipientUuid", targetPlayer.getUUID().toString())
+            .build();
     }
 
     @Override

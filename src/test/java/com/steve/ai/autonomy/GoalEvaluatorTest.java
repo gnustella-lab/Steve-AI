@@ -40,6 +40,97 @@ class GoalEvaluatorTest {
             evaluator.evaluate(delivery, Map.of("bread", 4), null, null, true).status());
         assertEquals(GoalEvaluator.Status.COMPLETE,
             evaluator.evaluate(delivery, Map.of(), null,
-                ActionResult.success("delivered").observation("delivered", true).build(), true).status());
+                ActionResult.success("delivered")
+                    .observation("delivered", true)
+                    .observation("deliveredItem", "bread")
+                    .observation("deliveredQuantity", 4)
+                    .build(), true).status());
+    }
+
+    @Test
+    void compoundPositionAndItemGoalRequiresBothConditions() {
+        AgentGoal goal = AgentGoal.create("Bring 4 bread to base", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        goal.setConstraints(GoalConstraints.forItem("bread", 4)
+            .withTargetPosition(new BlockPos(10, 64, 10), 2));
+        GoalEvaluator evaluator = new GoalEvaluator();
+
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of("bread", 0), new BlockPos(10, 64, 10), null, true).status());
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of("bread", 4), new BlockPos(20, 64, 20), null, true).status());
+        assertEquals(GoalEvaluator.Status.COMPLETE,
+            evaluator.evaluate(goal, Map.of("bread", 4), new BlockPos(10, 64, 10), null, true).status());
+    }
+
+    @Test
+    void genericSuccessfulActionCannotCompleteAnUnconstrainedGoal() {
+        AgentGoal goal = AgentGoal.create("Inspect the area", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+
+        GoalEvaluator.Evaluation evaluation = new GoalEvaluator().evaluate(
+            goal, Map.of(), null, ActionResult.success("done").build(), true);
+
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS, evaluation.status());
+    }
+
+    @Test
+    void combatGoalRequiresStructuredKillEvidence() {
+        AgentGoal goal = AgentGoal.create("Attack that creeper", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        GoalEvaluator evaluator = new GoalEvaluator();
+
+        ActionResult noProof = ActionResult.success("Combat complete")
+            .observation("actionType", "combat")
+            .observation("targetsKilled", 0)
+            .build();
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, noProof, true).status());
+
+        ActionResult killed = ActionResult.success("Target defeated")
+            .observation("actionType", "combat")
+            .observation("targetsSeen", 1)
+            .observation("targetsEngaged", 1)
+            .observation("targetsKilled", 1)
+            .build();
+        assertEquals(GoalEvaluator.Status.COMPLETE,
+            evaluator.evaluate(goal, Map.of(), null, killed, true).status());
+
+        ActionResult timeout = ActionResult.failure(ActionResult.ERROR_TIMEOUT, "Combat timed out")
+            .observation("actionType", "combat")
+            .observation("targetsSeen", 1)
+            .observation("targetsEngaged", 1)
+            .observation("targetsKilled", 0)
+            .build();
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, timeout, true).status());
+
+        ActionResult missing = ActionResult.failure(ActionResult.ERROR_TARGET_NOT_FOUND, "No creeper")
+            .observation("actionType", "combat")
+            .observation("targetsKilled", 0)
+            .build();
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, missing, true).status());
+    }
+
+    @Test
+    void quantitativeCombatGoalDoesNotCompleteAfterOneKill() {
+        AgentGoal goal = AgentGoal.create("Kill 10 zombies", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        goal.setConstraints(GoalConstraints.fromDescription(goal.getDescription()));
+        GoalEvaluator evaluator = new GoalEvaluator();
+        ActionResult oneKill = ActionResult.success("One zombie defeated")
+            .observation("actionType", "combat")
+            .observation("targetType", "minecraft:zombie")
+            .observation("targetsKilled", 1).build();
+
+        assertEquals(10, goal.getConstraints().targetQuantity());
+        assertEquals("zombie", goal.getConstraints().targetBlock());
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, oneKill, true).status());
+
+        goal.getProgress().record(10, 10, 20L);
+        assertEquals(GoalEvaluator.Status.COMPLETE,
+            evaluator.evaluate(goal, Map.of(), null, oneKill, true).status());
     }
 }

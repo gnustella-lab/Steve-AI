@@ -62,7 +62,7 @@ public final class CraftingGoalDecomposer {
             }
             missingRawMaterials.add(name);
             tasks.add(new Task("mine", Map.of(
-                "block", name,
+                "block", mineableBlockFor(name),
                 "quantity", missing.quantity()
             )));
         }
@@ -91,5 +91,26 @@ public final class CraftingGoalDecomposer {
             plan.failureReason(),
             missingRawMaterials
         );
+    }
+
+    static String mineableBlockFor(String ingredientName) {
+        String normalized = ingredientName == null ? "" : ingredientName.trim().toLowerCase();
+        String namespace = normalized.contains(":")
+            ? normalized.substring(0, normalized.indexOf(':') + 1) : "";
+        String path = normalized.contains(":")
+            ? normalized.substring(normalized.indexOf(':') + 1) : normalized;
+        String block = switch (path) {
+            case "raw_iron", "iron_ingot" -> "iron_ore";
+            case "raw_gold", "gold_ingot" -> "gold_ore";
+            case "raw_copper", "copper_ingot" -> "copper_ore";
+            case "coal" -> "coal_ore";
+            case "diamond" -> "diamond_ore";
+            case "emerald" -> "emerald_ore";
+            case "redstone" -> "redstone_ore";
+            case "lapis_lazuli" -> "lapis_ore";
+            case "cobblestone" -> "stone";
+            default -> path;
+        };
+        return namespace + block;
     }
 }

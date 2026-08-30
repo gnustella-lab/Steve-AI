@@ -76,11 +76,15 @@ public class IdleFollowAction extends BaseAction {
                 }
             }
             
-            steve.teleportTo(targetX, targetY, targetZ);
-            steve.getNavigation().stop(); // Clear navigation after teleport
-            
-            SteveMod.LOGGER.info("Steve '{}' teleported to player (was {} blocks away)", 
-                steve.getSteveName(), (int)distance);
+            net.minecraft.core.BlockPos destination = net.minecraft.core.BlockPos.containing(
+                targetX, targetY, targetZ);
+            if (steve.teleportSafely(destination)) {
+                SteveMod.LOGGER.info("Steve '{}' used authorized teleport to player (was {} blocks away)",
+                    steve.getSteveName(), (int)distance);
+            } else {
+                // Survival/default policy never teleports implicitly.
+                steve.getNavigation().moveTo(targetPlayer, 1.0);
+            }
             
         } else if (distance > FOLLOW_DISTANCE) {
             // Too far, move closer (normal walking)

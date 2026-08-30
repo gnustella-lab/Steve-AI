@@ -45,7 +45,7 @@ class CraftingGoalDecomposerTest {
         assertFalse(result.achievable());
         
         List<Task> tasks = result.tasks();
-        assertEquals(4, tasks.size(), "Should produce 4 tasks (2 gather, 2 process)");
+        assertEquals(4, tasks.size(), "Should gather missing blocks and then process recipes");
         
         // Mine tasks first
         assertEquals("mine", tasks.get(0).getAction());
@@ -56,7 +56,8 @@ class CraftingGoalDecomposerTest {
         assertEquals("minecraft:iron_ore", tasks.get(1).getStringParameter("block"));
         assertEquals(3, tasks.get(1).getIntParameter("quantity", 0));
 
-        // Crafting steps next
+        // Crafting steps next. Station/fuel needs are resolved by the physical actions
+        // from current world/inventory state instead of unconditional false prerequisites.
         assertEquals("craft", tasks.get(2).getAction());
         assertEquals("minecraft:oak_planks", tasks.get(2).getStringParameter("item"));
         assertEquals(4, tasks.get(2).getIntParameter("quantity", 0));
@@ -68,6 +69,20 @@ class CraftingGoalDecomposerTest {
         List<String> missing = result.missingRawMaterials();
         assertTrue(missing.contains("minecraft:oak_log"));
         assertTrue(missing.contains("minecraft:iron_ore"));
+    }
+
+    @Test
+    void rawSmeltingIngredientsMapToMineableBlocks() {
+        CraftingPlanner.CraftPlan plan = new CraftingPlanner.CraftPlan(
+            "minecraft:iron_ingot", 3, List.of(),
+            List.of(new IngredientResolver.IngredientQuantity("minecraft:raw_iron", 3)),
+            false, "Missing ingredients");
+
+        CraftingGoalDecomposer.DecomposedGoal result = CraftingGoalDecomposer.decomposeFromPlan(plan);
+
+        assertEquals("mine", result.tasks().get(0).getAction());
+        assertEquals("minecraft:iron_ore", result.tasks().get(0).getStringParameter("block"));
+        assertEquals(3, result.tasks().get(0).getIntParameter("quantity", 0));
     }
 
     @Test
@@ -113,5 +128,20 @@ class CraftingGoalDecomposerTest {
         assertEquals("craft", result.tasks().get(0).getAction());
         assertEquals("stick", result.tasks().get(0).getStringParameter("item"));
         assertEquals(4, result.tasks().get(0).getIntParameter("quantity", 0));
+    }
+
+    @Test
+    void craftingTableRecipesLetTheCraftActionResolveItsStation() {
+        CraftingPlanner.CraftPlan plan = new CraftingPlanner.CraftPlan(
+            "minecraft:iron_pickaxe", 1,
+            List.of(new CraftingPlanner.CraftStep(
+                "iron_pickaxe", null, null, "minecraft:iron_pickaxe", 1, 1, List.of(), true)),
+            List.of(), true, null);
+
+        CraftingGoalDecomposer.DecomposedGoal result = CraftingGoalDecomposer.decomposeFromPlan(plan);
+
+        assertEquals(1, result.tasks().size());
+        assertEquals("craft", result.tasks().get(0).getAction());
+        assertEquals("minecraft:iron_pickaxe", result.tasks().get(0).getStringParameter("item"));
     }
 }

@@ -84,4 +84,43 @@ class RecoveryEngineTest {
             new BlockPos(1, 64, 1));
         assertEquals(RecoveryDecision.Kind.BLOCKED, third.kind());
     }
+
+    @Test
+    void missingCombatTargetRequestsFreshObservationInsteadOfSuccess() {
+        AgentGoal goal = AgentGoal.create("Attack that creeper", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        Task combat = new Task("combat", Map.of("target", "creeper"));
+        ActionResult missing = ActionResult.failure(ActionResult.ERROR_TARGET_NOT_FOUND,
+            "No compatible combat target was found nearby")
+            .retryable(true).requiresReplanning(true)
+            .observation("targetsSeen", 0).build();
+
+        RecoveryDecision decision = new RecoveryEngine().decide(goal, combat, missing,
+            new FailureTracker(2), BlockPos.ZERO);
+
+        assertEquals(RecoveryDecision.Kind.REPLAN, decision.kind());
+    }
+
+    @Test
+    void cookingDependencyBecomesDeterministicSmeltPrerequisite() {
+        AgentGoal goal = AgentGoal.create("Craft an iron pickaxe", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        Task craft = new Task("craft", Map.of("item", "iron_pickaxe", "quantity", 1));
+        ActionResult dependency = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+            "Crafting dependency requires smelting")
+            .retryable(true)
+            .observation("required_action", "smelt")
+            .observation("required_item", "minecraft:iron_ingot")
+            .observation("required_quantity", 3)
+            .build();
+
+        RecoveryDecision decision = new RecoveryEngine().decide(goal, craft, dependency,
+            new FailureTracker(2), BlockPos.ZERO);
+
+        assertEquals(RecoveryDecision.Kind.PREREQUISITE, decision.kind());
+        assertEquals("Smelt 3 minecraft:iron_ingot", decision.prerequisiteDescription());
+        GoalConstraints constraints = GoalConstraints.fromDescription(decision.prerequisiteDescription());
+        assertEquals("minecraft:iron_ingot", constraints.targetItem());
+        assertEquals(3, constraints.targetQuantity());
+    }
 }

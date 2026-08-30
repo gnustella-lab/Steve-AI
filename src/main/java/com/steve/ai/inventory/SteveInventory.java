@@ -408,18 +408,35 @@ public final class SteveInventory {
      * Returns the withdrawn items, or empty if not enough.
      */
     public ItemStack withdraw(Item item, int amount) {
-        if (item == null || amount <= 0) {
-            return ItemStack.EMPTY;
+        if (item == null || amount <= 0) return ItemStack.EMPTY;
+
+        // One ItemStack cannot represent a mixture of differently tagged/damaged variants.
+        // Select a homogeneous group large enough and move the actual metadata intact.
+        ItemStack prototype = ItemStack.EMPTY;
+        for (ItemStack candidate : contents) {
+            if (!candidate.is(item)) continue;
+            int matching = contents.stream()
+                .filter(stack -> ItemStack.isSameItemSameTags(candidate, stack))
+                .mapToInt(ItemStack::getCount).sum();
+            if (matching >= amount) {
+                prototype = candidate.copy();
+                break;
+            }
         }
-        int totalAvailable = count(item);
-        if (totalAvailable < amount) {
-            return ItemStack.EMPTY;
+        if (prototype.isEmpty()) return ItemStack.EMPTY;
+
+        int remaining = amount;
+        for (int slot = 0; slot < contents.size() && remaining > 0; slot++) {
+            ItemStack stack = contents.get(slot);
+            if (!ItemStack.isSameItemSameTags(prototype, stack)) continue;
+            int take = Math.min(remaining, stack.getCount());
+            stack.shrink(take);
+            remaining -= take;
+            if (stack.isEmpty()) contents.set(slot, ItemStack.EMPTY);
         }
-        int removed = remove(item, amount);
-        if (removed == 0) {
-            return ItemStack.EMPTY;
-        }
-        return new ItemStack(item, removed);
+        if (remaining > 0) return ItemStack.EMPTY;
+        prototype.setCount(amount);
+        return prototype;
     }
 
     /**
@@ -438,14 +455,21 @@ public final class SteveInventory {
      * Returns the items that were actually dropped.
      */
     public List<ItemStack> drop(Item item, int amount) {
-        if (item == null || amount <= 0) {
-            return List.of();
+        if (item == null || amount <= 0) return List.of();
+        List<ItemStack> dropped = new ArrayList<>();
+        int remaining = amount;
+        for (int slot = 0; slot < contents.size() && remaining > 0; slot++) {
+            ItemStack stack = contents.get(slot);
+            if (!stack.is(item)) continue;
+            int take = Math.min(remaining, stack.getCount());
+            ItemStack fragment = stack.copy();
+            fragment.setCount(take);
+            dropped.add(fragment);
+            stack.shrink(take);
+            remaining -= take;
+            if (stack.isEmpty()) contents.set(slot, ItemStack.EMPTY);
         }
-        int removed = remove(item, amount);
-        if (removed == 0) {
-            return List.of();
-        }
-        return List.of(new ItemStack(item, removed));
+        return List.copyOf(dropped);
     }
 
     /**

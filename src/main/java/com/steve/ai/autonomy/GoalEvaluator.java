@@ -39,35 +39,98 @@ public final class GoalEvaluator {
         if (goal == null) return new Evaluation(Status.UNKNOWN, "No goal", false);
         GoalConstraints constraints = goal.getConstraints();
 
-        if (constraints.targetPosition() != null && position != null
-                && position.closerThan(constraints.targetPosition(), constraints.positionTolerance() + 0.5)) {
-            return new Evaluation(Status.COMPLETE, "Reached target position", true);
-        }
+        boolean requiresPosition = constraints.targetPosition() != null;
+        boolean positionReached = requiresPosition && position != null
+            && position.closerThan(constraints.targetPosition(), constraints.positionTolerance() + 0.5);
 
         if (!constraints.targetItem().isBlank() && constraints.targetQuantity() > 0) {
+            boolean itemConditionMet;
+            String successReason;
             if (constraints.requireDelivery()) {
-                boolean delivered = lastResult != null && lastResult.isSuccess()
-                    && (Boolean.TRUE.equals(lastResult.getObservation("delivered"))
-                        || lastResult.getMessage().toLowerCase(java.util.Locale.ROOT).contains("deliver"));
-                return delivered
-                    ? new Evaluation(Status.COMPLETE, "Delivery was observed", true)
-                    : new Evaluation(Status.IN_PROGRESS, "Delivery has not been observed", true);
+                String deliveredItem = String.valueOf(lastResult == null ? ""
+                    : lastResult.getObservation("deliveredItem"));
+                int deliveredQuantity = observationInt(lastResult, "deliveredQuantity");
+                String recipient = String.valueOf(lastResult == null ? ""
+                    : lastResult.getObservation("recipientUuid"));
+                boolean recipientMatches = constraints.targetPlayerUuid() == null
+                    || constraints.targetPlayerUuid().toString().equals(recipient);
+                itemConditionMet = lastResult != null && lastResult.isSuccess()
+                    && Boolean.TRUE.equals(lastResult.getObservation("delivered"))
+                    && normalizeId(deliveredItem).equals(normalizeId(constraints.targetItem()))
+                    && deliveredQuantity >= constraints.targetQuantity() && recipientMatches;
+                successReason = "Delivery quantity and recipient were observed";
+            } else {
+                int count = inventoryCounts == null ? 0
+                    : inventoryCounts.getOrDefault(constraints.targetItem(), 0);
+                itemConditionMet = count >= constraints.targetQuantity();
+                successReason = "Inventory quantity verified";
+                if (!itemConditionMet) {
+                    return new Evaluation(Status.IN_PROGRESS,
+                        "Need " + constraints.targetQuantity() + " " + constraints.targetItem()
+                            + ", have " + count, true);
+                }
             }
-            int count = inventoryCounts == null ? 0 : inventoryCounts.getOrDefault(constraints.targetItem(), 0);
-            return count >= constraints.targetQuantity()
-                ? new Evaluation(Status.COMPLETE, "Inventory quantity verified", true)
-                : new Evaluation(Status.IN_PROGRESS,
-                    "Need " + constraints.targetQuantity() + " " + constraints.targetItem() + ", have " + count, true);
+            if (!itemConditionMet) {
+                return new Evaluation(Status.IN_PROGRESS, "Delivery has not been verified", true);
+            }
+            if (requiresPosition && !positionReached) {
+                return new Evaluation(Status.IN_PROGRESS,
+                    "Item condition is met but target position has not been reached", true);
+            }
+            return new Evaluation(Status.COMPLETE, successReason, true);
+        }
+
+        if (requiresPosition) {
+            return positionReached
+                ? new Evaluation(Status.COMPLETE, "Reached target position", true)
+                : new Evaluation(Status.IN_PROGRESS, "Target position has not been reached", true);
         }
 
         if (lastResult != null && !lastResult.isSuccess()
                 && ActionResult.ERROR_PROTECTED.equals(lastResult.getErrorCode())) {
             return new Evaluation(Status.IN_PROGRESS, "Protected approach requires another strategy", true);
         }
-        if (planExhausted && lastResult != null && lastResult.isSuccess()) {
-            return new Evaluation(Status.COMPLETE, "Last bounded plan completed successfully", false);
+        if (isCombatGoal(goal)) {
+            int targetsKilled = observationInt(lastResult, "targetsKilled");
+            String observedType = String.valueOf(lastResult == null ? ""
+                : lastResult.getObservation("targetType"));
+            boolean targetMatches = constraints.targetBlock().isBlank()
+                || normalizeId(observedType).endsWith(normalizeId(constraints.targetBlock()));
+            int required = constraints.targetQuantity() > 0 ? constraints.targetQuantity() : 1;
+            int verifiedTotal = Math.max(targetsKilled, goal.getProgress().getCompletedUnits());
+            if (lastResult != null && lastResult.isSuccess()
+                    && "combat".equals(lastResult.getObservation("actionType"))
+                    && targetMatches && verifiedTotal >= required) {
+                return new Evaluation(Status.COMPLETE,
+                    "Combat target defeats verified: " + verifiedTotal + "/" + required, true);
+            }
+            return new Evaluation(Status.IN_PROGRESS,
+                "Combat progress verified: " + verifiedTotal + "/" + required, true);
         }
         return new Evaluation(Status.IN_PROGRESS, "Goal condition is not verified yet", false);
+    }
+
+    private static boolean isCombatGoal(AgentGoal goal) {
+        if (goal == null || goal.getDescription() == null) return false;
+        String description = goal.getDescription().toLowerCase(java.util.Locale.ROOT);
+        return description.matches(".*\\b(attack|fight|kill|defeat)\\b.*");
+    }
+
+    private static int observationInt(ActionResult result, String key) {
+        if (result == null) return 0;
+        Object value = result.getObservation(key);
+        return value instanceof Number number ? Math.max(0, number.intValue()) : 0;
+    }
+
+    private static String normalizeId(String value) {
+        if (value == null) return "";
+        String normalized = value.toLowerCase(java.util.Locale.ROOT).trim().replace(' ', '_');
+        int namespace = normalized.indexOf(':');
+        if (namespace >= 0) normalized = normalized.substring(namespace + 1);
+        if (normalized.endsWith("s") && !normalized.endsWith("ss")) {
+            return normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private static Item parseItem(String name) {

@@ -178,9 +178,21 @@ public class PermissionManager {
      * @param max   Maximum corner of the region
      */
     public void protectRegion(ServerLevel level, BlockPos min, BlockPos max) {
-        String regionKey = level.dimension().location() + ":" + min.toShortString() + "-" + max.toShortString();
+        String regionKey = regionKey(level, min, max);
         protectedRegions.put(regionKey, new ProtectedRegion(level, min, max));
         LOGGER.info("Protected region registered: {} from {} to {}", regionKey, min, max);
+    }
+
+    /** Removes only the exact protected region, without affecting concurrent tests or owners. */
+    public boolean unprotectRegion(ServerLevel level, BlockPos min, BlockPos max) {
+        if (level == null || min == null || max == null) {
+            return false;
+        }
+        boolean removed = protectedRegions.remove(regionKey(level, min, max)) != null;
+        if (removed) {
+            LOGGER.info("Protected region removed from {} to {}", min, max);
+        }
+        return removed;
     }
 
     /**
@@ -229,6 +241,22 @@ public class PermissionManager {
     /**
      * Represents a protected cubic region in a specific dimension.
      */
+    private static String regionKey(ServerLevel level, BlockPos min, BlockPos max) {
+        if (level == null || min == null || max == null) {
+            throw new IllegalArgumentException("Level and region corners are required");
+        }
+        BlockPos canonicalMin = new BlockPos(
+            Math.min(min.getX(), max.getX()),
+            Math.min(min.getY(), max.getY()),
+            Math.min(min.getZ(), max.getZ()));
+        BlockPos canonicalMax = new BlockPos(
+            Math.max(min.getX(), max.getX()),
+            Math.max(min.getY(), max.getY()),
+            Math.max(min.getZ(), max.getZ()));
+        return level.dimension().location() + ":" + canonicalMin.toShortString()
+            + "-" + canonicalMax.toShortString();
+    }
+
     private static class ProtectedRegion {
         private final String dimensionKey;
         private final int minX, minY, minZ;

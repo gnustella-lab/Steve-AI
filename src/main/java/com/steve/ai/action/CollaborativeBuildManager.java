@@ -138,11 +138,14 @@ public class CollaborativeBuildManager {
      * A section of the build that one Steve works on (represents a spatial quadrant)
      */
     public static class BuildSection {
+        private record Reservation(BlockPlacement placement, long expiresAtTick) {}
+
         public final int yLevel; // Used as section ID
         public final String sectionName;
         private final List<BlockPlacement> blocks;
         private final Queue<BlockPlacement> pendingBlocks;
         private final AtomicInteger blocksPlaced;
+        private final Map<String, Reservation> reservations;
         
         public BuildSection(int sectionId, List<BlockPlacement> blocks, String sectionName) {
             this.yLevel = sectionId;
@@ -150,19 +153,60 @@ public class CollaborativeBuildManager {
             this.blocks = List.copyOf(blocks);
             this.pendingBlocks = new ConcurrentLinkedQueue<>(blocks);
             this.blocksPlaced = new AtomicInteger(0);
+            this.reservations = new HashMap<>();
         }
         
         public BlockPlacement getNextBlock() {
             return pendingBlocks.poll();
         }
 
-        public void markBlockPlaced() {
+        public synchronized BlockPlacement reserveNextBlock(String steveName, long nowTick,
+                long reservationTtlTicks) {
+            releaseExpiredReservations(nowTick);
+            Reservation existing = reservations.get(steveName);
+            if (existing != null) {
+                return existing.placement();
+            }
+            BlockPlacement placement = pendingBlocks.poll();
+            if (placement != null) {
+                long expiresAt = nowTick > Long.MAX_VALUE - reservationTtlTicks
+                    ? Long.MAX_VALUE : nowTick + reservationTtlTicks;
+                reservations.put(steveName, new Reservation(placement, expiresAt));
+            }
+            return placement;
+        }
+
+        public synchronized void markBlockPlaced(String steveName) {
+            Reservation reservation = reservations.remove(steveName);
+            if (reservation == null) {
+                return;
+            }
             blocksPlaced.updateAndGet(current -> Math.min(current + 1, blocks.size()));
         }
 
-        public void returnBlock(BlockPlacement block) {
-            if (block != null) {
-                pendingBlocks.offer(block);
+        public synchronized void returnBlock(String steveName, BlockPlacement block) {
+            Reservation reservation = reservations.remove(steveName);
+            if (reservation != null) {
+                pendingBlocks.offer(reservation.placement());
+            }
+        }
+
+        public synchronized void releaseReservation(String steveName) {
+            Reservation reservation = reservations.remove(steveName);
+            if (reservation != null) {
+                pendingBlocks.offer(reservation.placement());
+            }
+        }
+
+        private void releaseExpiredReservations(long nowTick) {
+            if (reservations.isEmpty()) return;
+            List<String> expired = reservations.entrySet().stream()
+                .filter(entry -> nowTick >= entry.getValue().expiresAtTick())
+                .map(Map.Entry::getKey)
+                .toList();
+            for (String steveName : expired) {
+                Reservation reservation = reservations.remove(steveName);
+                if (reservation != null) pendingBlocks.offer(reservation.placement());
             }
         }
         
@@ -180,6 +224,7 @@ public class CollaborativeBuildManager {
     }
 
     private static final Map<String, CollaborativeBuild> activeBuilds = new ConcurrentHashMap<>();
+    public static final long RESERVATION_TTL_TICKS = 200L;
     
     /**
      * Register a new collaborative build project
@@ -206,6 +251,10 @@ public class CollaborativeBuildManager {
      * Returns null if Steve's section is complete
      */
     public static BlockPlacement getNextBlock(CollaborativeBuild build, String steveName) {
+        return getNextBlock(build, steveName, 0L);
+    }
+
+    public static BlockPlacement getNextBlock(CollaborativeBuild build, String steveName, long nowTick) {
         if (build.isComplete()) {
             return null;
         }
@@ -223,7 +272,8 @@ public class CollaborativeBuildManager {
             }
 
             BuildSection section = build.sections.get(sectionIndex);
-            BlockPlacement block = section.getNextBlock();
+            BlockPlacement block = section.reserveNextBlock(
+                steveName, Math.max(0L, nowTick), RESERVATION_TTL_TICKS);
             if (block != null) {
                 return block;
             }
@@ -237,7 +287,7 @@ public class CollaborativeBuildManager {
     public static void markBlockPlaced(CollaborativeBuild build, String steveName) {
         Integer sectionIndex = build.steveToSectionMap.get(steveName);
         if (sectionIndex != null) {
-            build.sections.get(sectionIndex).markBlockPlaced();
+            build.sections.get(sectionIndex).markBlockPlaced(steveName);
         }
     }
 
@@ -245,7 +295,7 @@ public class CollaborativeBuildManager {
             CollaborativeBuild build, String steveName, BlockPlacement placement) {
         Integer sectionIndex = build.steveToSectionMap.get(steveName);
         if (sectionIndex != null) {
-            build.sections.get(sectionIndex).returnBlock(placement);
+            build.sections.get(sectionIndex).returnBlock(steveName, placement);
         }
     }
 
@@ -253,6 +303,7 @@ public class CollaborativeBuildManager {
         if (build == null || steveName == null) {
             return;
         }
+        build.sections.forEach(section -> section.releaseReservation(steveName));
         build.steveToSectionMap.remove(steveName);
         build.participatingSteves.remove(steveName);
         if (build.participatingSteves.isEmpty()) {
@@ -351,4 +402,3 @@ public class CollaborativeBuildManager {
         activeBuilds.clear();
     }
 }
-

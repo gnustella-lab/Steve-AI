@@ -134,7 +134,11 @@ public class SteveMemory {
         while (worldFacts.size() > MAX_WORLD_FACTS) worldFacts.removeFirst();
     }
 
-    /** Legacy recall preserves its existing no-time/no-context behavior. */
+    /**
+     * Legacy, context-free recall retained only for compatibility. Autonomous planning must use
+     * the contextual overload so TTL, dimension and position cannot be bypassed accidentally.
+     */
+    @Deprecated(forRemoval = false)
     public List<WorldFact> getRelevantFacts(String query, int limit) {
         if (limit <= 0) return List.of();
         String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
@@ -163,17 +167,21 @@ public class SteveMemory {
     public List<WorldFact> getRelevantFacts(String query, int limit, long now,
             String dimension, BlockPos position, double maxDistance) {
         if (limit <= 0) return List.of();
-        String requestedDimension = dimension == null ? "" : dimension.trim();
+        String requestedDimension = dimension == null ? ""
+            : dimension.trim().toLowerCase(Locale.ROOT);
         List<String> queryTokens = tokens(query);
         return worldFacts.stream()
             .filter(fact -> !fact.isExpired(now))
             .filter(fact -> requestedDimension.isBlank()
                 || requestedDimension.equals(fact.dimension()))
             .map(fact -> new ScoredFact(fact, tokenScore(fact, queryTokens), distanceSquared(fact, position)))
-            .filter(scored -> queryTokens.isEmpty() || scored.score() > 0)
+            .filter(scored -> queryTokens.isEmpty()
+                || scored.fact().kind() == WorldFact.Kind.PROTECTED
+                || scored.score() > 0)
             .filter(scored -> maxDistance < 0.0 || scored.distanceSquared() == Double.POSITIVE_INFINITY
                 || scored.distanceSquared() <= maxDistance * maxDistance)
-            .sorted(Comparator.comparingInt(ScoredFact::score).reversed()
+            .sorted(Comparator.comparingInt((ScoredFact value) ->
+                    value.score() + kindWeight(value.fact().kind())).reversed()
                 .thenComparingDouble(ScoredFact::distanceSquared)
                 .thenComparing(Comparator.comparingDouble((ScoredFact value) -> value.fact().confidence()).reversed())
                 .thenComparing(Comparator.comparingLong((ScoredFact value) -> value.fact().lastSeenTick()).reversed()))
@@ -314,6 +322,16 @@ public class SteveMemory {
             }
         }
         return score;
+    }
+
+    private static int kindWeight(WorldFact.Kind kind) {
+        if (kind == null) return 0;
+        return switch (kind) {
+            case PROTECTED -> 4;
+            case FAILURE -> 2;
+            case RESOURCE, CRAFTING_STATION -> 1;
+            default -> 0;
+        };
     }
 
     private static List<String> tokens(String value) {

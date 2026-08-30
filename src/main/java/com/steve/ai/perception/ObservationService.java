@@ -57,12 +57,13 @@ public final class ObservationService {
             String query = goal == null ? memory.getCurrentGoal() : goal.getDescription();
             String dimension = base.getDimension();
             BlockPos origin = new BlockPos(base.getX(), base.getY(), base.getZ());
-            List<WorldFact> relevant = selectRelevantFacts(memory.getWorldFacts(), query, dimension,
-                origin, tick, MAX_RELEVANT_FACTS);
+            List<WorldFact> relevant = memory.getRelevantFacts(
+                query, MAX_RELEVANT_FACTS, tick, dimension, origin);
             builder.relevantMemory(relevant.stream().map(ObservationService::formatFact).toList());
-            builder.protectedPositions(selectRelevantFacts(memory.getWorldFacts(), "", dimension,
-                    origin, tick, MAX_PROTECTED_FACTS).stream()
+            builder.protectedPositions(memory.getRelevantFacts(
+                    "", MAX_PROTECTED_FACTS * 4, tick, dimension, origin).stream()
                 .filter(fact -> fact.kind() == WorldFact.Kind.PROTECTED)
+                .limit(MAX_PROTECTED_FACTS)
                 .map(ObservationService::formatFact)
                 .toList());
         }
@@ -99,8 +100,9 @@ public final class ObservationService {
         String normalizedDimension = dimension == null ? "" : dimension.toLowerCase(Locale.ROOT);
         return facts.stream()
             .filter(fact -> fact != null && !fact.isExpired(now))
-            .filter(fact -> normalizedDimension.isBlank() || fact.dimension().isBlank()
-                || fact.dimension().equalsIgnoreCase(normalizedDimension))
+            .filter(fact -> normalizedDimension.isBlank()
+                || (!fact.dimension().isBlank()
+                    && fact.dimension().equalsIgnoreCase(normalizedDimension)))
             .map(fact -> new ScoredFact(fact, score(fact, queryTokens, origin, normalizedDimension),
                 distanceSquared(fact.position(), origin)))
             .sorted(Comparator.comparingDouble(ScoredFact::score).reversed()

@@ -68,7 +68,7 @@ class AutonomyIntegrationSimulationTest {
 
         assertEquals(2, planner.calls);
         assertEquals("search_resource", secondPlan.getCurrentTask().getAction());
-        assertEquals(GoalEvaluator.Status.COMPLETE, evaluation.status());
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS, evaluation.status());
         assertTrue(failures.failedApproaches().size() == 1);
     }
 
