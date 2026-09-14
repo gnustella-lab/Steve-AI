@@ -71,8 +71,10 @@ public class AgentStateMachine {
         VALID_TRANSITIONS = new EnumMap<>(AgentState.class);
 
         VALID_TRANSITIONS.put(AgentState.IDLE, EnumSet.of(AgentState.OBSERVING, AgentState.PLANNING));
+        // Local planning may execute, verify existing inventory, or block without a provider request.
         VALID_TRANSITIONS.put(AgentState.OBSERVING,
-            EnumSet.of(AgentState.PLANNING, AgentState.RECOVERING, AgentState.PAUSED, AgentState.IDLE));
+            EnumSet.of(AgentState.PLANNING, AgentState.EXECUTING, AgentState.COMPLETED,
+                AgentState.BLOCKED, AgentState.RECOVERING, AgentState.PAUSED, AgentState.IDLE));
         VALID_TRANSITIONS.put(AgentState.PLANNING,
             EnumSet.of(AgentState.EXECUTING, AgentState.OBSERVING, AgentState.RECOVERING,
                 AgentState.BLOCKED, AgentState.FAILED, AgentState.PAUSED, AgentState.IDLE));

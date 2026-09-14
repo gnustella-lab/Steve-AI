@@ -74,14 +74,17 @@ public final class LocalAutonomyGameTests {
 
     @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 360)
     public static void gathersFromTheWorldWithoutLlm(GameTestHelper helper) {
-        helper.setBlock(new BlockPos(2, 2, 1), Blocks.OAK_LOG);
+        // Keep the resource at standing height on a real floor, inside the mining scan.
+        helper.setBlock(new BlockPos(1, 0, 1), Blocks.STONE);
+        helper.setBlock(new BlockPos(2, 0, 1), Blocks.STONE);
+        helper.setBlock(new BlockPos(2, 1, 1), Blocks.OAK_LOG);
         SteveEntity steve = spawn(helper);
         AgentGoal goal = steve.getAutonomyController().submitUserGoal("gather 1 oak_log", null);
         helper.runAfterDelay(300, () -> {
             completed(helper, goal);
             helper.assertTrue(steve.getSteveInventory().count(Items.OAK_LOG) >= 1,
                 "Resource must reach the actual inventory");
-            helper.assertTrue(helper.getLevel().getBlockState(helper.absolutePos(new BlockPos(2, 2, 1))).isAir(),
+            helper.assertTrue(helper.getLevel().getBlockState(helper.absolutePos(new BlockPos(2, 1, 1))).isAir(),
                 "Gathering must consume the world block");
             helper.succeed();
         });
