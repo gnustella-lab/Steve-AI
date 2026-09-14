@@ -23,6 +23,17 @@ class AgentStateMachineTest {
     }
 
     @Test
+    void acceptsLocalPlanningOutcomesWithoutForcedTransitions() {
+        for (AgentState outcome : new AgentState[]{AgentState.EXECUTING,
+                AgentState.COMPLETED, AgentState.BLOCKED}) {
+            AgentStateMachine machine = new AgentStateMachine(null, "local-test");
+            assertTrue(machine.transitionTo(AgentState.OBSERVING));
+            assertTrue(machine.transitionTo(outcome));
+            assertEquals(outcome, machine.getCurrentState());
+        }
+    }
+
+    @Test
     void rejectsSkippingFromIdleToCompleted() {
         AgentStateMachine machine = new AgentStateMachine(null, "test");
         assertFalse(machine.transitionTo(AgentState.COMPLETED));

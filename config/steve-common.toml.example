@@ -42,6 +42,8 @@
     # Persistent executive: OFF, GOAL_DRIVEN, or PROACTIVE
     enabled = true
     mode = "GOAL_DRIVEN"
+    localPlanning = true
+    # Set maxLlmCallsPerGoal to 0 for supported local goals without API calls.
     thinkCooldownTicks = 40
     maxPlanHorizon = 4
     maxReplansPerGoal = 8

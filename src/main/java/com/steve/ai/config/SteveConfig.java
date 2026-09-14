@@ -53,6 +53,7 @@ public class SteveConfig {
 
     // ── Autonomous executive ────────────────────────────────────────
     public static final ForgeConfigSpec.BooleanValue AUTONOMY_ENABLED;
+    public static final ForgeConfigSpec.BooleanValue AUTONOMY_LOCAL_PLANNING;
     public static final ForgeConfigSpec.ConfigValue<String> AUTONOMY_MODE;
     public static final ForgeConfigSpec.IntValue AUTONOMY_THINK_COOLDOWN_TICKS;
     public static final ForgeConfigSpec.IntValue AUTONOMY_MAX_PLAN_HORIZON;
@@ -130,6 +131,10 @@ public class SteveConfig {
         AUTONOMY_ENABLED = builder
             .comment("Enable the autonomous executive. OFF mode remains available for legacy behavior.")
             .define("enabled", true);
+
+        AUTONOMY_LOCAL_PLANNING = builder
+            .comment("Plan simple craft, smelt and gather goals locally before consulting the LLM")
+            .define("localPlanning", true);
 
         AUTONOMY_MODE = builder
             .comment("Autonomy mode: OFF, GOAL_DRIVEN, or PROACTIVE")
