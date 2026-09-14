@@ -42,7 +42,7 @@ public final class LocalAutonomyGameTests {
         helper.assertTrue(goal.getBudget().getLlmCalls() == 0, "Goal must spend zero calls");
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 240)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 240)
     public static void craftsOnlyTheMissingQuantity(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 4));
@@ -58,7 +58,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 120)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 120)
     public static void satisfiedGoalDoesNotConsumeMaterials(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 8));
@@ -72,7 +72,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 360)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 360)
     public static void gathersFromTheWorldWithoutLlm(GameTestHelper helper) {
         helper.setBlock(new BlockPos(2, 2, 1), Blocks.OAK_LOG);
         SteveEntity steve = spawn(helper);
@@ -87,7 +87,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 700)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 700)
     public static void smeltsOneMissingIngotWithoutLlm(GameTestHelper helper) {
         helper.setBlock(new BlockPos(1, 1, 1), Blocks.FURNACE);
         AbstractFurnaceBlockEntity furnace = (AbstractFurnaceBlockEntity) helper.getLevel()
@@ -105,7 +105,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 240)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 240)
     public static void pauseAndStopPreventLocalExecution(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_LOG, 1));
@@ -127,7 +127,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 240)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 240)
     public static void localPlanStillRequiresPermission(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_LOG, 1));
@@ -142,7 +142,7 @@ public final class LocalAutonomyGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve", template = "empty", timeoutTicks = 120)
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 120)
     public static void unsupportedGoalBlocksWithoutCallingProvider(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         AgentGoal goal = steve.getAutonomyController().submitUserGoal("craft stick then build a house", null);
