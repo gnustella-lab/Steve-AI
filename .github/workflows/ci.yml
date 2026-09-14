@@ -12,7 +12,7 @@ jobs:
   build:
     name: Build and Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -34,3 +34,28 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew clean test build --stacktrace
+
+      - name: Verify local autonomy without LLM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p run-gametest/config
+          cat > run-gametest/config/steve-common.toml <<'CONFIG'
+          [autonomy]
+          enabled = true
+          mode = "GOAL_DRIVEN"
+          localPlanning = true
+          maxLlmCallsPerGoal = 0
+          CONFIG
+          ./gradlew runGameTestServer -PgameTestNamespaces=steve_local --stacktrace | tee local-gametest.log
+          grep -E "All [1-9][0-9]* required tests passed" local-gametest.log
+
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: |
+            build/reports/tests/
+            local-gametest.log
+            run-gametest/logs/

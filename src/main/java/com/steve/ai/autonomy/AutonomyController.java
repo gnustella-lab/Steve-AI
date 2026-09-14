@@ -36,6 +36,7 @@ public final class AutonomyController {
     private final AgentStateMachine stateMachine;
     private final GoalQueue goalQueue = new GoalQueue();
     private final GoalEvaluator goalEvaluator = new GoalEvaluator();
+    private final LocalGoalPlanner localGoalPlanner = new LocalGoalPlanner();
     private final RecoveryEngine recoveryEngine = new RecoveryEngine();
     private final FailureTracker failureTracker;
     private final ObservationService observationService;
@@ -201,7 +202,8 @@ public final class AutonomyController {
         AgentGoal goal = AgentGoal.create(description, GoalOrigin.USER,
             GoalPriority.USER_INTERRUPT,
             null, now, configuredGoalBudget());
-        goal.setConstraints(GoalConstraints.fromDescription(description));
+        goal.setConstraints(parseLocalRequest(description).map(request -> GoalConstraints.forItem(request.item(), request.quantity()))
+            .orElseGet(() -> GoalConstraints.fromDescription(description)));
         if (controllerUuid != null) goal.putMetadata("controllerUuid", controllerUuid.toString());
         if (interruptedGoal != null) goal.putMetadata("interruptedGoalId", interruptedGoal.toString());
         goalQueue.enqueue(goal);
@@ -396,9 +398,10 @@ public final class AutonomyController {
 
     private void startPlanning(long now) {
         if (planningFuture != null || activeGoal == null) return;
-        if (activeGoal.getReplanCount() >= SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get()
+        if (createLocalPlan(now)) return;
+        if (!activeGoal.getBudget().canCallLlm()
                 || activeGoal.getBudget().getLlmCalls() >= SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get()) {
-            blockGoal("Autonomy budget exhausted", now);
+            blockGoal("No supported local plan; LLM call budget exhausted", now);
             return;
         }
 
@@ -417,9 +420,6 @@ public final class AutonomyController {
         }
 
         SteveMemory memory = steve.getMemory();
-        if (createDeterministicPrerequisitePlan(now)) {
-            return;
-        }
         PlanningContext context = new PlanningContext(
             activeGoal,
             null,
@@ -444,53 +444,68 @@ public final class AutonomyController {
         nextThinkTick = now + SteveConfig.AUTONOMY_THINK_COOLDOWN_TICKS.get();
     }
 
-    private boolean createDeterministicPrerequisitePlan(long now) {
-        if (activeGoal == null || activeGoal.getOrigin() != GoalOrigin.PREREQUISITE) return false;
-        String description = activeGoal.getDescription().trim();
-        String lower = description.toLowerCase(java.util.Locale.ROOT);
-        String action;
-        String sourceVerb;
-        if (lower.startsWith("craft ")) {
-            action = "craft";
-            sourceVerb = "craft";
-        } else if (lower.startsWith("smelt ")) {
-            action = "smelt";
-            sourceVerb = "smelt";
-        } else if (lower.startsWith("gather ")) {
-            action = "gather";
-            sourceVerb = "gather";
-        } else if (lower.startsWith("mine ")) {
-            action = "gather";
-            sourceVerb = "mine";
-        } else {
-            return false;
-        }
-
+    private boolean createLocalPlan(long now) {
+        if (!SteveConfig.AUTONOMY_LOCAL_PLANNING.get()
+                && activeGoal.getOrigin() != GoalOrigin.PREREQUISITE) return false;
         GoalConstraints constraints = activeGoal.getConstraints();
-        String target = constraints.targetItem();
-        if (target.isBlank()) {
-            String[] tokens = description.substring(sourceVerb.length()).trim().split("\\s+");
-            target = tokens.length == 0 ? "" : tokens[tokens.length - 1];
+        if (constraints.requireDelivery() || constraints.targetPlayerUuid() != null
+                || constraints.targetPosition() != null || !constraints.targetBlock().isBlank()
+                || !constraints.allowExploration()) return false;
+        var request = parseLocalRequest(activeGoal.getDescription());
+        if (request.isEmpty()) return false;
+        LocalGoalPlanner.Request local = request.get();
+        // Respect explicitly supplied constraints rather than overwriting a different objective.
+        if (!constraints.targetItem().isBlank()
+                && (!normalizeItemId(constraints.targetItem()).equals(local.item())
+                    || constraints.targetQuantity() != local.quantity())) return false;
+        activeGoal.setConstraints(GoalConstraints.forItem(local.item(), local.quantity()));
+        Task task = local.task(countItem(local.item()));
+        if (!originAllowsTasks(activeGoal, List.of(task))) {
+            blockGoal("The goal origin is not authorized for the requested action", now);
+            return true;
         }
-        if (target.isBlank()) return false;
-        int quantity = constraints.targetQuantity() > 0 ? constraints.targetQuantity() : 1;
-        Task task = switch (action) {
-            case "craft" -> new Task("craft", Map.of("item", target, "quantity", quantity));
-            case "smelt" -> new Task("smelt", Map.of("item", target, "quantity", quantity));
-            default -> new Task("gather", Map.of("resource", target, "quantity", quantity));
-        };
+        if (task.getIntParameter("quantity", 0) == 0) {
+            completeGoal("Inventory quantity verified before planning", now);
+            return true;
+        }
         Plan currentPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
             executor.getControllingPlayerUuid(), steve.getUUID(),
             SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
             SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
             SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
-        currentPlan.loadHorizon(List.of(task), "Deterministic prerequisite: " + description,
-            "recipe/resource prerequisite", now);
+        currentPlan.loadHorizon(List.of(task), "Local plan: " + activeGoal.getDescription(),
+            "verified item and inventory deficit", now);
         setCurrentPlan(currentPlan);
         executor.acceptAutonomousPlan(currentPlan);
-        moveTo(AgentState.EXECUTING, "deterministic prerequisite plan");
-        sendFeedback("Preparing prerequisite: " + description, now);
+        moveTo(AgentState.EXECUTING, "local plan accepted");
+        sendFeedback("Working locally: " + activeGoal.getDescription(), now);
         return true;
+    }
+
+    private java.util.Optional<LocalGoalPlanner.Request> parseLocalRequest(String description) {
+        return localGoalPlanner.parse(description, item -> {
+            var id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
+                && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id)
+                    != net.minecraft.world.item.Items.AIR;
+        });
+    }
+
+    private GoalConstraints prerequisiteConstraints(String description) {
+        return parseLocalRequest(description)
+            .map(request -> GoalConstraints.forItem(request.item(), request.quantity()))
+            .orElseGet(() -> GoalConstraints.fromDescription(description));
+    }
+
+    private static String normalizeItemId(String item) {
+        String normalized = item.toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+        return normalized.contains(":") ? normalized : "minecraft:" + normalized;
+    }
+
+    private int countItem(String item) {
+        var id = net.minecraft.resources.ResourceLocation.tryParse(normalizeItemId(item));
+        if (id == null) return 0;
+        return steve.getSteveInventory().count(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id));
     }
 
     private void handlePlanningResult(ResponseParser.ParsedResponse response, long now) {
@@ -692,16 +707,39 @@ public final class AutonomyController {
     }
 
     private void createPrerequisite(String description, long now) {
-        description = refinePrerequisite(description);
         AgentGoal parent = activeGoal;
+        int depth;
+        try {
+            depth = Integer.parseInt(String.valueOf(parent.getMetadata().getOrDefault("prerequisiteDepth", "0")));
+        } catch (NumberFormatException exception) {
+            blockGoal("Invalid prerequisite depth", now);
+            return;
+        }
+        if (depth < 0 || depth >= 8) {
+            blockGoal("Prerequisite depth limit reached", now);
+            return;
+        }
+        // Recovery quantities describe additional ingredients, while goals describe inventory totals.
+        var additional = parseLocalRequest(description);
+        if (additional.isPresent()) {
+            var request = additional.get();
+            long total = (long) countItem(request.item()) + request.quantity();
+            if (total > 2048) {
+                blockGoal("Prerequisite quantity exceeds local planning limit", now);
+                return;
+            }
+            description = request.action() + " " + total + " " + request.item();
+        }
+        description = refinePrerequisite(description);
         steve.getMemory().rememberGoal(parent);
         goalQueue.pauseActive(now);
         parent.pause(now);
         executor.stopAutonomousExecution();
         AgentGoal prerequisite = AgentGoal.create(description, GoalOrigin.PREREQUISITE,
             GoalPriority.PREREQUISITE, parent.getId(), now, configuredGoalBudget());
-        prerequisite.setConstraints(GoalConstraints.fromDescription(description));
+        prerequisite.setConstraints(prerequisiteConstraints(description));
         prerequisite.putMetadata("parentDescription", parent.getDescription());
+        prerequisite.putMetadata("prerequisiteDepth", depth + 1);
         Object controllerUuid = parent.getMetadata().get("controllerUuid");
         if (controllerUuid != null) {
             prerequisite.putMetadata("controllerUuid", controllerUuid);
@@ -719,7 +757,7 @@ public final class AutonomyController {
                 || !description.toLowerCase(java.util.Locale.ROOT).startsWith("gather ")) {
             return description;
         }
-        GoalConstraints constraints = GoalConstraints.fromDescription(description);
+        GoalConstraints constraints = prerequisiteConstraints(description);
         String item = constraints.targetItem();
         if (item.isBlank() || level.getServer() == null) return description;
         String normalized = item.contains(":") ? item : "minecraft:" + item;
@@ -732,7 +770,7 @@ public final class AutonomyController {
         boolean craftable = level.getServer().getRecipeManager().getRecipes().stream()
             .anyMatch(recipe -> recipe.getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
                 && recipe.getResultItem(level.registryAccess()).is(targetItem));
-        return craftable ? "Craft " + item : description;
+        return craftable ? "Craft " + constraints.targetQuantity() + " " + item : description;
     }
 
     private void completeGoal(String reason, long now) {

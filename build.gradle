@@ -47,7 +47,7 @@ minecraft {
 
         gameTestServer {
             workingDirectory project.file('run-gametest')
-            property 'forge.enabledGameTestNamespaces', 'steve'
+            property 'forge.enabledGameTestNamespaces', (project.findProperty('gameTestNamespaces') ?: 'steve').toString()
             property 'forge.logging.console.level', 'info'
 
             mods {

@@ -351,3 +351,39 @@ MIT
 ## Issues
 
 Found a bug? [Open an issue in this repository](https://github.com/gnustella-lab/Steve-AI/issues).
+
+### Local-first autonomy
+
+With `[autonomy] localPlanning = true` (default), the goal controller handles
+simple `craft`/`make`, `smelt`, and `gather`/`collect`/`mine` requests before
+initializing or calling a language model. Examples:
+
+- `craft 8 oak_planks`
+- `smelt 16 iron ingots`
+- `gather 4 oak_log`
+
+Quantities are **desired inventory totals**: with 15 ingots already present,
+`smelt 16 iron_ingot` smelts one more. An already satisfied goal completes
+without consuming materials. Recipe output batches may exceed the missing count.
+Use exact registered item IDs (including mod namespaces), or simple English
+item names. Unknown items, compound requests, delivery and additional constraints
+remain on the existing LLM path. This is bounded support for known tasks, not
+unrestricted offline natural-language understanding or new proactive behavior.
+
+Set `maxLlmCallsPerGoal = 0` for offline operation. Known local tasks still run;
+an unsupported goal blocks with a reason instead of contacting a provider.
+Local tasks use the normal action executor, permissions, pause/stop, verification,
+and bounded recovery. Missing ingredients can produce local prerequisites;
+prerequisite quantities include existing stock and nesting stops at eight levels.
+Set `localPlanning = false` to retain LLM planning for user goals (internal
+recognized prerequisites can still run locally).
+
+CI runs unit tests and the build, then starts an isolated Minecraft GameTest server
+with zero LLM budget and the `steve_local` namespace. To repeat that server suite,
+put the offline configuration above in `run-gametest/config/steve-common.toml` and run:
+
+```bash
+./gradlew runGameTestServer -PgameTestNamespaces=steve_local
+```
+
+The default `steve` GameTest namespace retains the existing general server suite.
