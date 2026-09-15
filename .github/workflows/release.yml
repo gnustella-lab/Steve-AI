@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release/v1.8.0'
   workflow_dispatch:
     inputs:
       tag_name:
@@ -18,6 +20,7 @@ jobs:
   build-and-release:
     name: Build and publish release asset
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -34,49 +37,62 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      - name: Build release jar
+      - name: Resolve release version and notes
+        id: release_metadata
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          tag_name="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            tag_name="${{ inputs.tag_name }}"
+          tag_name="${REQUESTED_TAG#release/}"
+          if [[ ! "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable vMAJOR.MINOR.PATCH release tag" >&2
+            exit 1
           fi
-          ./gradlew clean build --stacktrace -Pmod_version="${tag_name#v}"
+          notes_path="docs/releases/${tag_name}.md"
+          test -s "$notes_path"
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "version=${tag_name#v}" >> "$GITHUB_OUTPUT"
+          echo "notes_path=$notes_path" >> "$GITHUB_OUTPUT"
+          echo "jar_path=build/libs/steve-ai-mod-${tag_name#v}.jar" >> "$GITHUB_OUTPUT"
+          echo "checksum_path=build/libs/steve-ai-mod-${tag_name#v}.jar.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Build release jar
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release_metadata.outputs.version }}
+        run: ./gradlew clean build --stacktrace -Pmod_version="$RELEASE_VERSION"
 
       - name: Verify dedicated server runtime
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release_metadata.outputs.version }}
         run: |
           set -euo pipefail
-          tag_name="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            tag_name="${{ inputs.tag_name }}"
-          fi
-          ./gradlew runGameTestServer --stacktrace -Pmod_version="${tag_name#v}" | tee gametest.log
+          ./gradlew runGameTestServer --stacktrace -Pmod_version="$RELEASE_VERSION" | tee gametest.log
           grep -E "All [1-9][0-9]* required tests passed" gametest.log
 
-      - name: Resolve release metadata
-        id: release_metadata
+      - name: Verify release asset and checksum
         shell: bash
+        env:
+          RELEASE_JAR: ${{ steps.release_metadata.outputs.jar_path }}
         run: |
           set -euo pipefail
-          tag_name="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            tag_name="${{ inputs.tag_name }}"
-          fi
+          test -s "$RELEASE_JAR"
+          cd build/libs
+          sha256sum "${RELEASE_JAR##*/}" > "${RELEASE_JAR##*/}.sha256"
+          sha256sum -c "${RELEASE_JAR##*/}.sha256"
 
-          jar_path="build/libs/steve-ai-mod-${tag_name#v}.jar"
-          if [ ! -f "${jar_path}" ]; then
-            echo "Installable JAR was not produced at ${jar_path}" >&2
-            exit 1
-          fi
-
-          sha256sum "${jar_path}" > "${jar_path}.sha256"
-
-          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
-          echo "jar_path=${jar_path}" >> "${GITHUB_OUTPUT}"
-          echo "checksum_path=${jar_path}.sha256" >> "${GITHUB_OUTPUT}"
-          echo "jar_name=$(basename "${jar_path}")" >> "${GITHUB_OUTPUT}"
+      - name: Preserve build and validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-reports
+          path: |
+            build/reports/tests/
+            build/libs/*.jar
+            gametest.log
+            run-gametest/logs/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -84,13 +100,8 @@ jobs:
           tag_name: ${{ steps.release_metadata.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           name: Steve AI ${{ steps.release_metadata.outputs.tag_name }}
-          body: |
-            Release build for Steve AI.
-
-            Asset:
-            - `${{ steps.release_metadata.outputs.jar_name }}`
-
-            The `.sha256` file can be used to verify the downloaded JAR.
+          body_path: ${{ steps.release_metadata.outputs.notes_path }}
+          fail_on_unmatched_files: true
           files: |
             ${{ steps.release_metadata.outputs.jar_path }}
             ${{ steps.release_metadata.outputs.checksum_path }}
