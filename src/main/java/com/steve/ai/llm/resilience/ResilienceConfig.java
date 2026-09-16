@@ -47,7 +47,7 @@ public class ResilienceConfig {
     private static final int RETRY_INITIAL_INTERVAL_MS = 1000; // 1s, 2s, 4s exponential backoff
 
     // Rate Limiter configuration
-    private static final int RATE_LIMIT_PER_MINUTE = 10;
+    private static final int RATE_LIMIT_PER_MINUTE = 30;
     private static final int RATE_LIMITER_TIMEOUT_SECONDS = 5;
 
     // Bulkhead configuration
@@ -93,8 +93,22 @@ public class ResilienceConfig {
             .failureRateThreshold(CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD)
             .waitDurationInOpenState(Duration.ofSeconds(CIRCUIT_BREAKER_WAIT_DURATION_SECONDS))
             .permittedNumberOfCallsInHalfOpenState(CIRCUIT_BREAKER_HALF_OPEN_CALLS)
-            .recordExceptions(IOException.class, TimeoutException.class, LLMException.class)
-            .ignoreExceptions(IllegalArgumentException.class)
+            .recordExceptions(IOException.class, TimeoutException.class)
+            .ignoreException(throwable -> {
+                if (throwable instanceof IllegalArgumentException) {
+                    return true;
+                }
+                if (throwable instanceof LLMException llm) {
+                    return llm.getErrorType() == LLMException.ErrorType.RATE_LIMIT
+                        || llm.getErrorType() == LLMException.ErrorType.AUTH_ERROR
+                        || llm.getErrorType() == LLMException.ErrorType.CLIENT_ERROR;
+                }
+                return false;
+            })
+            .recordException(throwable -> throwable instanceof LLMException llm
+                && llm.getErrorType() != LLMException.ErrorType.RATE_LIMIT
+                && llm.getErrorType() != LLMException.ErrorType.AUTH_ERROR
+                && llm.getErrorType() != LLMException.ErrorType.CLIENT_ERROR)
             .build();
     }
 
@@ -139,7 +153,8 @@ public class ResilienceConfig {
 
                 // For LLMException, check retryable flag
                 if (throwable instanceof LLMException) {
-                    return ((LLMException) throwable).isRetryable();
+                    LLMException llm = (LLMException) throwable;
+                    return llm.isRetryable() && llm.getErrorType() != LLMException.ErrorType.RATE_LIMIT;
                 }
 
                 // Don't retry other exceptions

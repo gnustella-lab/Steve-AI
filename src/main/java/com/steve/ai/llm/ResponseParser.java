@@ -24,8 +24,6 @@ public class ResponseParser {
     private static final int MAX_TASKS = 16;
     private static final int MAX_PARAMETERS = 32;
     private static final int MAX_PARAMETER_STRING_LENGTH = 512;
-    private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
-        "decision", "goalStatus", "summary", "tasks", "plan");
     private static final Set<String> TASK_FIELDS = Set.of("action", "parameters");
     private static final Set<String> GOAL_STATUSES = Set.of(
         "in_progress", "complete", "blocked", "paused", "failed");
@@ -54,9 +52,7 @@ public class ResponseParser {
             if (!root.isJsonObject()) return null;
 
             JsonObject json = root.getAsJsonObject();
-            if (json.keySet().stream().anyMatch(field -> !TOP_LEVEL_FIELDS.contains(field))) {
-                return null;
-            }
+            // Extra keys such as "reasoning" are ignored; only the operational schema is read.
 
             Decision decision = json.has("decision")
                 ? parseDecision(readBoundedString(json.get("decision"), 32)) : Decision.ACT;

@@ -88,8 +88,8 @@ public class MineBlockAction extends BaseAction {
 
         if (targetBlock.defaultBlockState().requiresCorrectToolForDrops()
                 && steve.getSteveInventory().findBestToolForBlock(targetBlock) == null) {
-            String requiredTool = targetBlock.getName().getString().contains("ore")
-                ? "stone_pickaxe" : "pickaxe";
+            String requiredTool = targetBlock.getName().getString().toLowerCase(java.util.Locale.ROOT).contains("ore")
+                ? "stone_pickaxe" : "wooden_pickaxe";
             result = ActionResult.failure(ActionResult.ERROR_TOOL_MISSING,
                 "A suitable tool is required before mining " + blockName)
                 .observation("required_tool", requiredTool)

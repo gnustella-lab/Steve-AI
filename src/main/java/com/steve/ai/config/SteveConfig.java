@@ -107,8 +107,8 @@ public class SteveConfig {
             .define("apiKey", "");
 
         GROQ_MODEL = builder
-            .comment("Groq model to use (llama-3.1-8b-instant, llama-3.1-70b-versatile, mixtral-8x7b-32768)")
-            .define("model", "llama-3.1-8b-instant");
+            .comment("Groq model to use (openai/gpt-oss-20b, qwen/qwen3.8-27b, groq/compound)")
+            .define("model", "openai/gpt-oss-20b");
 
         builder.pop();
 

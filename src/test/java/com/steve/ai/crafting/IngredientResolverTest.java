@@ -75,6 +75,28 @@ class IngredientResolverTest {
         assertEquals(5, inventory.count(Items.BREAD));
     }
 
+    @Test
+    void ingredientQuantityUsesRegistryIdNotObjectToString() {
+        IngredientResolver.IngredientQuantity logs =
+            new IngredientResolver.IngredientQuantity(Ingredient.of(Items.OAK_LOG), 4);
+
+        assertEquals("minecraft:oak_log", logs.ingredientName());
+        assertEquals(4, logs.quantity());
+    }
+
+    @Test
+    void preferredNameUsesInventoryStockInsteadOfTagExtras() {
+        SteveInventory inventory = new SteveInventory(4);
+        inventory.insert(new ItemStack(Items.OAK_PLANKS, 8));
+
+        String name = IngredientResolver.preferredName(
+            Ingredient.of(Items.BAMBOO, Items.OAK_PLANKS), inventory);
+
+        assertEquals("minecraft:oak_planks", name);
+        assertEquals("minecraft:oak_planks",
+            IngredientResolver.preferredName(Ingredient.of(Items.BAMBOO, Items.OAK_PLANKS), null));
+    }
+
     private static int totalOfType(List<ItemStack> stacks, net.minecraft.world.item.Item item) {
         int total = 0;
         for (ItemStack stack : stacks) {

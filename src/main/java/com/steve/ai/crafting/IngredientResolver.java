@@ -1,6 +1,8 @@
 package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -157,10 +159,68 @@ public class IngredientResolver {
      */
     public record IngredientQuantity(Ingredient ingredient, String ingredientName, int quantity) {
         public IngredientQuantity(Ingredient ingredient, int quantity) {
-            this(ingredient, ingredient != null ? ingredient.toString() : "", quantity);
+            this(ingredient, nameOf(ingredient), quantity);
         }
         public IngredientQuantity(String ingredientName, int quantity) {
             this(null, ingredientName, quantity);
         }
+    }
+
+    /** Registry id of a matching item. Prefers inventory stock, then common overworld items. */
+    public static String nameOf(Ingredient ingredient) {
+        return preferredName(ingredient, null);
+    }
+
+    public static String preferredName(Ingredient ingredient, SteveInventory inventory) {
+        if (ingredient == null || ingredient.isEmpty()) {
+            return "";
+        }
+        ItemStack[] items = ingredient.getItems();
+        if (items.length == 0) {
+            return "";
+        }
+        if (inventory != null) {
+            for (ItemStack stack : items) {
+                if (!stack.isEmpty() && inventory.count(stack.getItem()) > 0) {
+                    return idOf(stack);
+                }
+            }
+        }
+        String best = "";
+        int bestScore = Integer.MAX_VALUE;
+        for (ItemStack stack : items) {
+            String id = idOf(stack);
+            int score = preferenceScore(id);
+            if (!id.isEmpty() && score < bestScore) {
+                best = id;
+                bestScore = score;
+            }
+        }
+        return best.isEmpty() ? idOf(items[0]) : best;
+    }
+
+    private static int preferenceScore(String id) {
+        if (id.equals("minecraft:oak_planks") || id.equals("minecraft:oak_log") || id.equals("minecraft:stick")) {
+            return 0;
+        }
+        if (id.equals("minecraft:cobblestone") || id.equals("minecraft:oak_wood")) {
+            return 1;
+        }
+        if (id.contains("stripped") || id.contains("mangrove") || id.contains("crimson")
+                || id.contains("warped") || id.contains("bamboo") || id.contains("cherry")) {
+            return 50;
+        }
+        if (id.endsWith("_planks") || id.endsWith("_log")) {
+            return 10;
+        }
+        return 20;
+    }
+
+    private static String idOf(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return "";
+        }
+        ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return key == null ? "" : key.toString();
     }
 }

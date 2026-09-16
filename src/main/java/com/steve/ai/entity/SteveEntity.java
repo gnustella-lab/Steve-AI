@@ -47,6 +47,7 @@ public class SteveEntity extends PathfinderMob {
     private ActionExecutor actionExecutor;
     private AutonomyController autonomyController;
     private int tickCounter = 0;
+    private long lastAutonomyGameTime = Long.MIN_VALUE;
     private boolean isFlying = false;
     private final InvulnerabilityScopes invulnerabilityScopes = new InvulnerabilityScopes();
 
@@ -59,7 +60,7 @@ public class SteveEntity extends PathfinderMob {
         this.autonomyController = null;
         this.setCustomNameVisible(true);
         this.setCanPickUpLoot(true);
-        
+        this.setPersistenceRequired();
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -86,15 +87,38 @@ public class SteveEntity extends PathfinderMob {
     @Override
     public void tick() {
         super.tick();
-        
-        if (!this.level().isClientSide) {
-            tickCounter++;
-            if (tickCounter % 20 == 0) {
-                syncEquipmentToInventory();
-            }
-            getActionExecutor().tick();
-            getAutonomyController().tick();
+        tickAutonomyIfNeeded();
+    }
+
+    /**
+     * Runs a full entity tick when the chunk is loaded but not entity-ticking.
+     * Dedicated servers with no nearby player skip mob ticks; Steves must keep working.
+     */
+    public void ensureServerTick() {
+        if (this.level().isClientSide || !this.isAlive() || this.isRemoved()) {
+            return;
         }
+        if (lastAutonomyGameTime == this.level().getGameTime()) {
+            return;
+        }
+        this.tick();
+    }
+
+    private void tickAutonomyIfNeeded() {
+        if (this.level().isClientSide) {
+            return;
+        }
+        long now = this.level().getGameTime();
+        if (lastAutonomyGameTime == now) {
+            return;
+        }
+        lastAutonomyGameTime = now;
+        tickCounter++;
+        if (tickCounter % 20 == 0) {
+            syncEquipmentToInventory();
+        }
+        getActionExecutor().tick();
+        getAutonomyController().tick();
     }
 
     public void setSteveName(String name) {

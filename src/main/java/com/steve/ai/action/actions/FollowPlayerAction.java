@@ -25,7 +25,8 @@ public class FollowPlayerAction extends BaseAction {
         findPlayer();
         
         if (targetPlayer == null) {
-            result = ActionResult.failure("Player not found: " + playerName);
+            result = ActionResult.failure(ActionResult.ERROR_PLAYER_OFFLINE,
+                "Player not found: " + playerName).retryable(false).build();
         }
     }
 

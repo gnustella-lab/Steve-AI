@@ -207,7 +207,11 @@ public final class AutonomyController {
         if (controllerUuid != null) goal.putMetadata("controllerUuid", controllerUuid.toString());
         if (interruptedGoal != null) goal.putMetadata("interruptedGoalId", interruptedGoal.toString());
         goalQueue.enqueue(goal);
-        activeGoal = null;
+        activeGoal = goalQueue.pollNext(now);
+        if (activeGoal == null) {
+            goalQueue.activate(goal, now);
+            activeGoal = goal;
+        }
         setCurrentPlan(null);
         lastActionResult = null;
         lastFailure = "";
