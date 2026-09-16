@@ -51,6 +51,7 @@ public class SteveManager {
                 steve.setOwnerUuid(ownerUuid);
             }
             steve.setPos(position.x, position.y, position.z);
+            steve.setPersistenceRequired();
 
             if (!level.addFreshEntity(steve)) {
                 SteveMod.LOGGER.error("Failed to add Steve entity to world");
@@ -163,6 +164,10 @@ public class SteveManager {
 
     public int getActiveCount() {
         return activeSteves.size();
+    }
+
+    public Collection<SteveEntity> getActiveSteves() {
+        return java.util.List.copyOf(activeSteves.values());
     }
 
     public void tick(ServerLevel level) {

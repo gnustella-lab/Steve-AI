@@ -228,6 +228,7 @@ public class SteveCommands {
             // The command already runs on the server thread. Only the HTTP request is asynchronous.
             UUID controllerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
             steve.getAutonomyController().submitUserGoal(command, controllerUuid);
+            source.sendSuccess(() -> Component.literal("Goal submitted to " + name + ": " + command), false);
             
             return 1;
         } else {

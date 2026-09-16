@@ -79,7 +79,7 @@ public class CraftingPlanner {
         }
 
         // Find the target recipe
-        Recipe<?> targetRecipe = findRecipeForItem(level, targetItem);
+        Recipe<?> targetRecipe = findRecipeForItem(level, targetItem, inventory);
         if (targetRecipe == null) {
             return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),
                 false, "No recipe found for: " + targetItem);
@@ -131,22 +131,86 @@ public class CraftingPlanner {
             achievable, failureReason);
     }
 
-    private static Recipe<?> findRecipeForItem(ServerLevel level, String itemName) {
+    private static Recipe<?> findRecipeForItem(ServerLevel level, String itemName, SteveInventory inventory) {
         var recipeManager = level.getServer().getRecipeManager();
         var recipes = recipeManager.getRecipes();
+        var target = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+            net.minecraft.resources.ResourceLocation.tryParse(
+                itemName.contains(":") ? itemName : "minecraft:" + itemName
+            )
+        );
+        if (target == null || target == net.minecraft.world.item.Items.AIR) {
+            return null;
+        }
 
+        Recipe<?> best = null;
+        int bestMissing = Integer.MAX_VALUE;
         for (Recipe<?> recipe : recipes) {
-            if (recipe.getResultItem(level.registryAccess()).is(
-                net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
-                    net.minecraft.resources.ResourceLocation.tryParse(
-                        itemName.contains(":") ? itemName : "minecraft:" + itemName
-                    )
-                )
-            )) {
-                return recipe;
+            if (!recipe.getResultItem(level.registryAccess()).is(target)) {
+                continue;
+            }
+            int missing = missingIngredientKinds(recipe, inventory);
+            int preference = overworldPreference(recipe);
+            int score = missing * 100 + preference;
+            if (score < bestMissing) {
+                bestMissing = score;
+                best = recipe;
+                if (score == 0) {
+                    break;
+                }
             }
         }
-        return null;
+        return best;
+    }
+
+    private static int missingIngredientKinds(Recipe<?> recipe, SteveInventory inventory) {
+        int missing = 0;
+        for (var ingredient : recipe.getIngredients()) {
+            if (ingredient.isEmpty()) {
+                continue;
+            }
+            boolean have = false;
+            if (inventory != null) {
+                for (ItemStack stack : ingredient.getItems()) {
+                    if (!stack.isEmpty() && inventory.count(stack.getItem()) > 0) {
+                        have = true;
+                        break;
+                    }
+                }
+            }
+            if (!have) {
+                missing++;
+            }
+        }
+        return missing;
+    }
+
+    private static int overworldPreference(Recipe<?> recipe) {
+        int best = 20;
+        for (var ingredient : recipe.getIngredients()) {
+            if (ingredient.isEmpty()) {
+                continue;
+            }
+            for (ItemStack stack : ingredient.getItems()) {
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                String id = key == null ? "" : key.toString();
+                if (id.equals("minecraft:oak_planks") || id.equals("minecraft:oak_log")
+                        || id.equals("minecraft:stick")) {
+                    best = Math.min(best, 0);
+                } else if (id.equals("minecraft:cobblestone")) {
+                    best = Math.min(best, 1);
+                } else if (id.contains("bamboo") || id.contains("mangrove") || id.contains("stripped")
+                        || id.contains("crimson") || id.contains("warped")) {
+                    best = Math.min(best, 15);
+                } else if (id.endsWith("_planks") || id.endsWith("_log")) {
+                    best = Math.min(best, 5);
+                }
+            }
+        }
+        return best;
     }
 
     private static void collectRelevantRecipes(
@@ -160,7 +224,7 @@ public class CraftingPlanner {
         if (visited.contains(targetItem)) return;
         visited.add(targetItem);
 
-        Recipe<?> recipe = findRecipeForItem(level, targetItem);
+        Recipe<?> recipe = findRecipeForItem(level, targetItem, inventory);
         if (recipe == null) return;
 
         String recipeId = recipe.getId().toString();
@@ -189,7 +253,7 @@ public class CraftingPlanner {
             for (var item : ingredient.getItems()) {
                 String itemName = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
                     item.getItem()).toString();
-                if (findRecipeForItem(level, itemName) != null) {
+                if (findRecipeForItem(level, itemName, inventory) != null) {
                     collectRelevantRecipes(level, itemName, graph, recipeMap, visited, inventory);
                     break;
                 }
@@ -249,8 +313,7 @@ public class CraftingPlanner {
                 } else {
                     missingRawMaterials.add(new IngredientResolver.IngredientQuantity(
                         ingredient.ingredient(),
-                        ingredient.ingredientName() == null || ingredient.ingredientName().isBlank()
-                            ? resolveIngredientName(ingredient.ingredient()) : ingredient.ingredientName(),
+                        IngredientResolver.preferredName(ingredient.ingredient(), inventory),
                         remaining));
                 }
             }

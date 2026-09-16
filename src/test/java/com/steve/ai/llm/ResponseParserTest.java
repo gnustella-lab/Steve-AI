@@ -90,9 +90,21 @@ class ResponseParserTest {
         assertNull(ResponseParser.parseAIResponse(
             "{\"summary\":\"safe\",\"tasks\":["
                 + "{\"action\":\"mine\",\"parameters\":{\"block\":\"iron_ore\",\"quantity\":1}}]} trailing"));
-        assertNull(ResponseParser.parseAIResponse(
-            "{\"reasoning\":\"private\",\"summary\":\"safe\",\"tasks\":[]}"));
         assertNull(ResponseParser.parseAIResponse("`````"));
+    }
+
+    @Test
+    void ignoresUnknownTopLevelFieldsSuchAsReasoning() {
+        String response = """
+            {"reasoning":"private","decision":"act","summary":"safe","goalStatus":"in_progress",
+             "tasks":[{"action":"mine","parameters":{"block":"iron_ore","quantity":1}}]}
+            """;
+
+        ResponseParser.ParsedResponse parsed = ResponseParser.parseAIResponse(response);
+
+        assertNotNull(parsed);
+        assertEquals("safe", parsed.getSummary());
+        assertEquals(1, parsed.getTasks().size());
     }
 
     @Test
