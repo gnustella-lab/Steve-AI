@@ -58,7 +58,8 @@ class TaskValidatorTest {
             "structure", "house", "material", "oak_planks",
             "width", 9, "height", 6, "depth", 9))));
         assertTrue(TaskValidator.isValid(new Task("follow", Map.of("player", "me"))));
-        assertEquals(19, ActionRegistry.getInstance().getDescriptors().size());
+        assertTrue(TaskValidator.isValid(new Task("say", Map.of("text", "Vou buscar madeira."))));
+        assertEquals(21, ActionRegistry.getInstance().getDescriptors().size());
         assertTrue(ActionRegistry.getInstance().getDescriptors().stream()
             .noneMatch(descriptor -> descriptor.schemaVersion().equals("legacy")));
     }

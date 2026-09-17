@@ -107,7 +107,22 @@ public final class GoalEvaluator {
             return new Evaluation(Status.IN_PROGRESS,
                 "Combat progress verified: " + verifiedTotal + "/" + required, true);
         }
+        if (isBuildGoal(goal)) {
+            if (lastResult != null && lastResult.isSuccess()
+                    && "build".equals(lastResult.getObservation("actionType"))) {
+                return new Evaluation(Status.COMPLETE, "Requested structure was built", true);
+            }
+            return new Evaluation(Status.IN_PROGRESS, "Structure has not been built yet", true);
+        }
         return new Evaluation(Status.IN_PROGRESS, "Goal condition is not verified yet", false);
+    }
+
+    private static boolean isBuildGoal(AgentGoal goal) {
+        if (goal == null || goal.getDescription() == null) return false;
+        String description = LocalGoalPlanner.normalize(goal.getDescription());
+        return description.matches(".*\\b(build|construir|construa|monte|montar)\\b.*"
+            + "\\b(house|home|casa|castle|castelo|tower|torre|barn|celeiro|shed|galpao|"
+            + "wall|muro|platform|plataforma|hut|cabana)\\b.*");
     }
 
     private static boolean isCombatGoal(AgentGoal goal) {

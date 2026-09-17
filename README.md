@@ -355,19 +355,22 @@ Found a bug? [Open an issue in this repository](https://github.com/gnustella-lab
 ### Local-first autonomy
 
 With `[autonomy] localPlanning = true` (default), the goal controller handles
-simple `craft`/`make`, `smelt`, and `gather`/`collect`/`mine` requests before
-initializing or calling a language model. Examples:
+simple `craft`/`make`/`fazer`/`fabricar`, `smelt`/`fundir`,
+`gather`/`collect`/`mine`/`coletar`/`minerar`, and `build`/`construir`
+requests before initializing or calling a language model. Examples:
 
-- `craft 8 oak_planks`
-- `smelt 16 iron ingots`
-- `gather 4 oak_log`
+- `craft 8 oak_planks` / `fazer 8 tábuas de carvalho`
+- `smelt 16 iron ingots` / `fundir 16 ferro`
+- `gather 4 oak_log` / `coletar 4 troncos de carvalho`
+- `build a house` / `construir uma casa`
 
 Quantities are **desired inventory totals**: with 15 ingots already present,
 `smelt 16 iron_ingot` smelts one more. An already satisfied goal completes
 without consuming materials. Recipe output batches may exceed the missing count.
-Use exact registered item IDs (including mod namespaces), or simple English
-item names. Unknown items, compound requests, delivery and additional constraints
-remain on the existing LLM path. This is bounded support for known tasks, not
+Use exact registered item IDs (including mod namespaces), simple English names,
+or the Portuguese aliases (`tábuas de carvalho`, `graveto`, `pedregulho`,
+`picareta de madeira`, …). Unknown items, compound requests, delivery and
+additional constraints remain on the existing LLM path. This is bounded support for known tasks, not
 unrestricted offline natural-language understanding or new proactive behavior.
 
 Set `maxLlmCallsPerGoal = 0` for offline operation. Known local tasks still run;

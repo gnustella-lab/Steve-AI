@@ -36,8 +36,13 @@ public class BuildStructureAction extends BaseAction {
     private CollaborativeBuildManager.CollaborativeBuild collaborativeBuild; // For multi-Steve collaboration
     private boolean isCollaborative;
     private static final int MAX_TICKS = 120000;
-    private static final int BLOCKS_PER_TICK = 1;
+    private static final int BLOCKS_PER_TICK = 2;
     private static final double BUILD_SPEED_MULTIPLIER = 1.5;
+    private static final int DEFAULT_WIDTH = 7;
+    private static final int DEFAULT_HEIGHT = 4;
+    private static final int DEFAULT_DEPTH = 7;
+    private static final double PLACE_REACH = 24.0;
+    private static final double JOIN_RADIUS = 16.0;
 
     public BuildStructureAction(SteveEntity steve, Task task) {
         super(steve, task);
@@ -55,21 +60,16 @@ public class BuildStructureAction extends BaseAction {
         ticksRunning = 0;
         String dimensionId = steve.level().dimension().location().toString();
         collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
-            structureType, dimensionId, steve.blockPosition(), 128.0);
+            structureType, dimensionId, steve.blockPosition(), JOIN_RADIUS);
         if (collaborativeBuild != null) {
             isCollaborative = true;
-            
+            buildPlan = collaborativeBuild.buildPlan;
             enableAuthorizedBuildMobility();
-            
-            SteveMod.LOGGER.info("Steve '{}' JOINING collaborative build of '{}' ({}% complete) - FLYING & INVULNERABLE ENABLED", 
+            SteveMod.LOGGER.info("Steve '{}' JOINING collaborative build of '{}' ({}% complete)",
                 steve.getSteveName(), structureType, collaborativeBuild.getProgressPercentage());
-            
             buildMaterials = new ArrayList<>();
-            buildMaterials.add(Blocks.OAK_PLANKS); // Default material
-            buildMaterials.add(Blocks.COBBLESTONE);
-            buildMaterials.add(Blocks.GLASS_PANE);
-            
-            return; // Skip structure generation, just join the existing build
+            buildMaterials.add(Blocks.OAK_PLANKS);
+            return;
         }
         
         isCollaborative = false;
@@ -93,9 +93,9 @@ public class BuildStructureAction extends BaseAction {
         }
         
         Object dimensionsParam = task.getParameter("dimensions");
-        int width = 9;  // Increased from 5
-        int height = 6; // Increased from 4
-        int depth = 9;  // Increased from 5
+        int width = DEFAULT_WIDTH;
+        int height = DEFAULT_HEIGHT;
+        int depth = DEFAULT_DEPTH;
         
         if (dimensionsParam instanceof List) {
             List<?> dims = (List<?>) dimensionsParam;
@@ -105,9 +105,9 @@ public class BuildStructureAction extends BaseAction {
                 depth = ((Number) dims.get(2)).intValue();
             }
         } else {
-            width = task.getIntParameter("width", 5);
-            height = task.getIntParameter("height", 4);
-            depth = task.getIntParameter("depth", 5);
+            width = task.getIntParameter("width", DEFAULT_WIDTH);
+            height = task.getIntParameter("height", DEFAULT_HEIGHT);
+            depth = task.getIntParameter("depth", DEFAULT_DEPTH);
         }
         
         net.minecraft.world.entity.player.Player nearestPlayer = findPreferredPlayer();
@@ -166,7 +166,7 @@ public class BuildStructureAction extends BaseAction {
         }
         
         collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
-            structureType, dimensionId, clearPos, 128.0);
+            structureType, dimensionId, clearPos, JOIN_RADIUS);
         
         if (collaborativeBuild != null) {
             isCollaborative = true;
@@ -208,7 +208,11 @@ public class BuildStructureAction extends BaseAction {
                     registerCompletedStructure();
                 }
                 steve.setFlying(false);
-                result = ActionResult.success("Built " + structureType + " collaboratively!").build();
+                result = ActionResult.success("Built " + structureType + " collaboratively!")
+                    .observation("actionType", "build")
+                    .observation("structure", structureType)
+                    .observation("blocksPlaced", collaborativeBuild.getBlocksPlaced())
+                    .build();
                 return;
             }
             
@@ -227,16 +231,11 @@ public class BuildStructureAction extends BaseAction {
                 
                 BlockPos pos = placement.pos;
                 double distance = Math.sqrt(steve.blockPosition().distSqr(pos));
-                if (distance > 5) {
-                    BlockPos approach = pos.offset(2, 0, 2);
-                    if (!steve.teleportSafely(approach)) {
-                        steve.getNavigation().moveTo(
-                            approach.getX() + 0.5, approach.getY(), approach.getZ() + 0.5,
-                            BUILD_SPEED_MULTIPLIER);
-                        CollaborativeBuildManager.returnBlock(
-                            collaborativeBuild, steve.getSteveName(), placement);
-                        break;
-                    }
+                if (distance > PLACE_REACH) {
+                    steve.getNavigation().moveTo(
+                        pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5,
+                        BUILD_SPEED_MULTIPLIER);
+                    break;
                 }
                 
                 steve.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
@@ -268,12 +267,13 @@ public class BuildStructureAction extends BaseAction {
                         if (!steve.getSteveInventory().consume(neededItem)) {
                             CollaborativeBuildManager.returnBlock(
                                 collaborativeBuild, steve.getSteveName(), placement);
-                            steve.setFlying(false);
-                            abandonCollaborativeBuild();
+                            String missing = BuiltInRegistries.ITEM.getKey(neededItem).toString();
                             result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
-                                "Missing building material in inventory: " + blockState.getBlock().getName().getString())
+                                "Missing building material in inventory: " + missing)
                                 .retryable(true)
-                                .requiresReplanning(true)
+                                .observation("actionType", "build")
+                                .observation("missing_item", missing)
+                                .observation("missing_quantity", countRemaining(blockState.getBlock()))
                                 .build();
                             return;
                         }
@@ -296,8 +296,8 @@ public class BuildStructureAction extends BaseAction {
                 CollaborativeBuildManager.markBlockPlaced(collaborativeBuild, steve.getSteveName());
                 currentBlockIndex++;
                 
-                SteveMod.LOGGER.info("Steve '{}' PLACED BLOCK at {} - Total: {}/{}", 
-                    steve.getSteveName(), pos, collaborativeBuild.getBlocksPlaced(), 
+                SteveMod.LOGGER.debug("Steve '{}' PLACED BLOCK at {} - Total: {}/{}",
+                    steve.getSteveName(), pos, collaborativeBuild.getBlocksPlaced(),
                     collaborativeBuild.getTotalBlocks());
                 
                 // Particles and sound
@@ -353,13 +353,26 @@ public class BuildStructureAction extends BaseAction {
         String structure = structureType != null
             ? structureType
             : task.getStringParameter("structure");
-        return "Build " + structure + " (" + currentBlockIndex + "/"
-            + (buildPlan != null ? buildPlan.size() : 0) + ")";
+        int total = buildPlan != null ? buildPlan.size()
+            : collaborativeBuild != null ? collaborativeBuild.getTotalBlocks() : 0;
+        return "Build " + structure + " (" + currentBlockIndex + "/" + total + ")";
     }
 
     private List<BlockPlacement> generateBuildPlan(String type, BlockPos start, int width, int height, int depth) {
-        // Delegate to centralized StructureGenerators utility
         return StructureGenerators.generate(type, start, width, height, depth, buildMaterials);
+    }
+
+    private int countRemaining(Block block) {
+        if (collaborativeBuild == null || collaborativeBuild.buildPlan == null) {
+            return 1;
+        }
+        int remaining = 0;
+        for (BlockPlacement placement : collaborativeBuild.buildPlan) {
+            if (placement.block == block) {
+                remaining++;
+            }
+        }
+        return Math.max(1, remaining);
     }
 
     private void abandonCollaborativeBuild() {

@@ -458,6 +458,26 @@ public final class AutonomyController {
         var request = parseLocalRequest(activeGoal.getDescription());
         if (request.isEmpty()) return false;
         LocalGoalPlanner.Request local = request.get();
+        if (local.isBuild()) {
+            if (!constraints.targetItem().isBlank() || constraints.targetPosition() != null) return false;
+            Task buildTask = local.task(0);
+            if (!originAllowsTasks(activeGoal, List.of(buildTask))) {
+                blockGoal("The goal origin is not authorized for the requested action", now);
+                return true;
+            }
+            Plan buildPlan = new Plan(activeGoal.getId(), activeGoal.getDescription(),
+                executor.getControllingPlayerUuid(), steve.getUUID(),
+                SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
+                SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
+                SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
+            buildPlan.loadHorizon(List.of(buildTask), "Local plan: " + activeGoal.getDescription(),
+                "verified structure command", now);
+            setCurrentPlan(buildPlan);
+            executor.acceptAutonomousPlan(buildPlan);
+            moveTo(AgentState.EXECUTING, "local plan accepted");
+            sendFeedback("Working locally: " + activeGoal.getDescription(), now);
+            return true;
+        }
         // Respect explicitly supplied constraints rather than overwriting a different objective.
         if (!constraints.targetItem().isBlank()
                 && (!normalizeItemId(constraints.targetItem()).equals(local.item())
@@ -569,9 +589,6 @@ public final class AutonomyController {
         setCurrentPlan(currentPlan);
         executor.acceptAutonomousPlan(currentPlan);
         moveTo(AgentState.EXECUTING, "horizon accepted");
-        if (response.getSummary() != null && !response.getSummary().isBlank()) {
-            sendFeedback(response.getSummary(), now);
-        }
     }
 
     private boolean originAllowsTasks(AgentGoal goal, List<Task> tasks) {
@@ -584,7 +601,7 @@ public final class AutonomyController {
             boolean allowed = switch (goal.getOrigin()) {
                 case PREREQUISITE, RECOVERY -> switch (action) {
                     case "craft", "smelt", "gather", "mine", "search_resource", "pathfind",
-                        "equip_item", "withdraw_item", "pickup_item" -> true;
+                        "equip_item", "withdraw_item", "pickup_item", "local" -> true;
                     default -> false;
                 };
                 case MAINTENANCE, AUTONOMOUS -> switch (action) {

@@ -155,4 +155,16 @@ public final class LocalAutonomyGameTests {
             helper.succeed();
         });
     }
+
+    @GameTest(templateNamespace = "steve_local", template = "empty", timeoutTicks = 80)
+    public static void buildHouseDoesNotCallProvider(GameTestHelper helper) {
+        SteveEntity steve = spawn(helper);
+        steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 64));
+        AgentGoal goal = steve.getAutonomyController().submitUserGoal("construir uma casa", null);
+        helper.runAfterDelay(40, () -> {
+            helper.assertTrue(goal.getStatus() != GoalStatus.BLOCKED, "House command must be a local plan");
+            helper.assertTrue(goal.getBudget().getLlmCalls() == 0, "House command must not call the LLM");
+            helper.succeed();
+        });
+    }
 }
