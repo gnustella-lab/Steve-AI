@@ -48,7 +48,7 @@ jobs:
           maxLlmCallsPerGoal = 0
           CONFIG
           ./gradlew runGameTestServer -PgameTestNamespaces=steve_local --stacktrace | tee local-gametest.log
-          grep -F "All 7 required tests passed" local-gametest.log
+          grep -F "All 8 required tests passed" local-gametest.log
 
       - name: Upload verification reports
         if: always()
