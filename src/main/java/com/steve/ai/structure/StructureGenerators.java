@@ -3,11 +3,12 @@ package com.steve.ai.structure;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.DoorBlock;
-import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Utility class for procedural structure generation.
@@ -35,81 +36,83 @@ public class StructureGenerators {
     }
 
     private static List<BlockPlacement> buildAdvancedHouse(BlockPos start, int width, int height, int depth, List<Block> materials) {
-        List<BlockPlacement> blocks = new ArrayList<>();
+        width = Math.max(5, width);
+        height = Math.max(4, height);
+        depth = Math.max(5, depth);
+
+        Map<BlockPos, BlockState> cells = new LinkedHashMap<>();
         Block floorMaterial = getMaterial(materials, 0);
-        Block wallMaterial = getMaterial(materials, 1);
-        Block roofMaterial = getMaterial(materials, 2);
-        Block windowMaterial = Blocks.GLASS_PANE;
-        Block doorMaterial = Blocks.OAK_DOOR;
+        Block wallMaterial = materials.size() > 1 ? getMaterial(materials, 1) : floorMaterial;
+        Block roofMaterial = materials.size() > 2 ? getMaterial(materials, 2) : wallMaterial;
+        Block windowMaterial = resolveWindowMaterial(materials);
+        int doorX = width / 2;
 
-        if (roofMaterial == Blocks.GLASS || roofMaterial == Blocks.GLASS_PANE) {
-            roofMaterial = Blocks.OAK_PLANKS;
-        }
-
-        // Floor
         for (int x = 0; x < width; x++) {
             for (int z = 0; z < depth; z++) {
-                blocks.add(new BlockPlacement(start.offset(x, 0, z), floorMaterial));
+                cells.put(start.offset(x, 0, z), floorMaterial.defaultBlockState());
             }
         }
 
-        // Walls with windows and door
-        for (int y = 1; y <= height; y++) {
+        for (int y = 1; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                // Front wall
-                if (x == width / 2 && y <= 2) {
-                    blocks.add(new BlockPlacement(start.offset(x, y, 0),
-                        doorMaterial.defaultBlockState().setValue(DoorBlock.HALF,
-                            y == 1 ? DoubleBlockHalf.LOWER : DoubleBlockHalf.UPPER)));
-                } else if (y >= 2 && y <= height - 1 && (x == 2 || x == width - 3)) {
-                    blocks.add(new BlockPlacement(start.offset(x, y, 0), windowMaterial));
-                } else {
-                    blocks.add(new BlockPlacement(start.offset(x, y, 0), wallMaterial));
-                }
-
-                // Back wall
-                if (y >= 2 && y <= height - 1 && (x == 2 || x == width / 2 || x == width - 3)) {
-                    blocks.add(new BlockPlacement(start.offset(x, y, depth - 1), windowMaterial));
-                } else {
-                    blocks.add(new BlockPlacement(start.offset(x, y, depth - 1), wallMaterial));
-                }
+                putFrontOrBackWall(cells, start.offset(x, y, 0), x, y, width, doorX, true, wallMaterial, windowMaterial);
+                putFrontOrBackWall(cells, start.offset(x, y, depth - 1), x, y, width, doorX, false, wallMaterial, windowMaterial);
             }
-
-            // Side walls
             for (int z = 1; z < depth - 1; z++) {
-                if (y >= 2 && y <= height - 1 && (z % 3 == 1)) {
-                    blocks.add(new BlockPlacement(start.offset(0, y, z), windowMaterial));
-                    blocks.add(new BlockPlacement(start.offset(width - 1, y, z), windowMaterial));
-                } else {
-                    blocks.add(new BlockPlacement(start.offset(0, y, z), wallMaterial));
-                    blocks.add(new BlockPlacement(start.offset(width - 1, y, z), wallMaterial));
-                }
+                putSideWall(cells, start.offset(0, y, z), z, y, depth, wallMaterial, windowMaterial);
+                putSideWall(cells, start.offset(width - 1, y, z), z, y, depth, wallMaterial, windowMaterial);
             }
         }
 
-        // Pyramid roof
-        int roofStartHeight = height + 1;
-        int roofLayers = Math.max(width, depth) / 2 + 1;
-
-        for (int layer = 0; layer < roofLayers; layer++) {
-            int currentHeight = roofStartHeight + layer;
-            int inset = layer;
-
-            for (int x = inset; x < width - inset; x++) {
-                for (int z = inset; z < depth - inset; z++) {
-                    if (x == inset || x == width - 1 - inset ||
-                        z == inset || z == depth - 1 - inset) {
-                        blocks.add(new BlockPlacement(start.offset(x, currentHeight, z), roofMaterial));
-                    }
-                }
-            }
-
-            if (width - 2 * inset <= 1 || depth - 2 * inset <= 1) {
-                break;
+        for (int x = 0; x < width; x++) {
+            for (int z = 0; z < depth; z++) {
+                cells.put(start.offset(x, height, z), roofMaterial.defaultBlockState());
             }
         }
 
+        List<BlockPlacement> blocks = new ArrayList<>(cells.size());
+        for (Map.Entry<BlockPos, BlockState> entry : cells.entrySet()) {
+            blocks.add(new BlockPlacement(entry.getKey(), entry.getValue()));
+        }
         return blocks;
+    }
+
+    private static Block resolveWindowMaterial(List<Block> materials) {
+        for (Block block : materials) {
+            if (block == Blocks.GLASS || block == Blocks.GLASS_PANE) {
+                return block;
+            }
+        }
+        return Blocks.AIR;
+    }
+
+    private static boolean isWindowColumn(int along, int span, int doorAlong) {
+        if (along <= 0 || along >= span - 1 || along == doorAlong) {
+            return false;
+        }
+        return along == 2 || along == span - 3 || along == span / 2;
+    }
+
+    private static void putFrontOrBackWall(Map<BlockPos, BlockState> cells, BlockPos pos, int x, int y,
+            int width, int doorX, boolean front, Block wallMaterial, Block windowMaterial) {
+        if (front && x == doorX && y <= 2) {
+            cells.put(pos, Blocks.AIR.defaultBlockState());
+            return;
+        }
+        if (y == 2 && isWindowColumn(x, width, front ? doorX : -1)) {
+            cells.put(pos, windowMaterial.defaultBlockState());
+            return;
+        }
+        cells.put(pos, wallMaterial.defaultBlockState());
+    }
+
+    private static void putSideWall(Map<BlockPos, BlockState> cells, BlockPos pos, int z, int y, int depth,
+            Block wallMaterial, Block windowMaterial) {
+        if (y == 2 && z % 3 == 1 && z > 0 && z < depth - 1) {
+            cells.put(pos, windowMaterial.defaultBlockState());
+            return;
+        }
+        cells.put(pos, wallMaterial.defaultBlockState());
     }
 
     private static List<BlockPlacement> buildCastle(BlockPos start, int width, int height, int depth, List<Block> materials) {

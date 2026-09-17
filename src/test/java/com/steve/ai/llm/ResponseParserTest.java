@@ -127,4 +127,22 @@ class ResponseParserTest {
             "{\"summary\":\"unsafe\",\"tasks\":[{\"action\":\"mine\","
                 + "\"parameters\":{\"block\":\"iron_ore\",\"quantity\":0}}]}"));
     }
+
+    @Test
+    void acceptsASayHorizonAndRejectsSpeechMixedWithWorldActions() {
+        ResponseParser.ParsedResponse spoken = ResponseParser.parseAIResponse("""
+            {"decision":"act","summary":"status","goalStatus":"in_progress",
+             "tasks":[{"action":"say","parameters":{"text":"Vou buscar madeira."}}]}
+            """);
+
+        assertNotNull(spoken);
+        assertEquals("say", spoken.getTasks().get(0).getAction());
+        assertEquals("Vou buscar madeira.", spoken.getTasks().get(0).getStringParameter("text"));
+        assertNull(ResponseParser.parseAIResponse("""
+            {"decision":"act","summary":"status","goalStatus":"in_progress","tasks":[
+              {"action":"say","parameters":{"text":"oi"}},
+              {"action":"mine","parameters":{"block":"iron_ore","quantity":1}}
+            ]}
+            """));
+    }
 }

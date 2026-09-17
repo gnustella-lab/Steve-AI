@@ -137,6 +137,14 @@ public class CoreActionsPlugin implements ActionPlugin {
                  ActionCapability.MOVEMENT, ActionCapability.WORLD_READ),
              (steve, task, ctx) -> new FollowPlayerAction(steve, task), priority);
 
+        registry.register(descriptor(
+                "say",
+                "Speak one plain-text chat line. Must be the only task in the horizon; never mix with world actions. No markdown.",
+                ActionPermission.INTERACTION,
+                JsonSchema.object().requiredString("text", 1, 160).build(),
+                "{\"action\":\"say\",\"parameters\":{\"text\":\"Vou buscar madeira.\"}}"),
+            (steve, task, ctx) -> new SayAction(steve, task), priority);
+
         // ── Inventory actions ────────────────────────────────────────
 
         registry.register(descriptor(
@@ -271,6 +279,19 @@ public class CoreActionsPlugin implements ActionPlugin {
                 ActionCapability.INVENTORY_WRITE, ActionCapability.WORLD_WRITE),
             (steve, task, ctx) -> new SmeltItemAction(steve, task), priority);
 
+        registry.register(descriptor(
+                "local",
+                "Run one offline local command (English or Portuguese craft/gather/smelt/mine). No extra LLM call.",
+                ActionPermission.CRAFTING,
+                JsonSchema.object()
+                    .requiredString("command", 1, 256)
+                    .build(),
+                "{\"action\":\"local\",\"parameters\":{\"command\":\"fazer 8 tábuas de carvalho\"}}",
+                ActionCapability.MOVEMENT, ActionCapability.INVENTORY_READ,
+                ActionCapability.INVENTORY_WRITE, ActionCapability.WORLD_WRITE,
+                ActionCapability.CRAFTING),
+            (steve, task, ctx) -> new LocalCommandAction(steve, task, ctx), priority);
+
         LOGGER.info("CoreActionsPlugin loaded {} actions", registry.getActionCount());
     }
 
@@ -310,9 +331,9 @@ public class CoreActionsPlugin implements ActionPlugin {
                         * ((Number) list.get(1)).longValue()
                         * ((Number) list.get(2)).longValue() <= 65_536;
                 }
-                long width = ((Number) values.getOrDefault("width", 9)).longValue();
-                long height = ((Number) values.getOrDefault("height", 6)).longValue();
-                long depth = ((Number) values.getOrDefault("depth", 9)).longValue();
+                long width = ((Number) values.getOrDefault("width", 7)).longValue();
+                long height = ((Number) values.getOrDefault("height", 4)).longValue();
+                long depth = ((Number) values.getOrDefault("depth", 7)).longValue();
                 return width * height * depth <= 65_536;
             })
             .build();

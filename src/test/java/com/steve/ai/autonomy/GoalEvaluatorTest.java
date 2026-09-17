@@ -114,6 +114,22 @@ class GoalEvaluatorTest {
     }
 
     @Test
+    void buildHouseGoalCompletesOnlyWithStructuredBuildEvidence() {
+        AgentGoal goal = AgentGoal.create("construir uma casa", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        GoalEvaluator evaluator = new GoalEvaluator();
+
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, ActionResult.success("done").build(), true).status());
+        assertEquals(GoalEvaluator.Status.COMPLETE,
+            evaluator.evaluate(goal, Map.of(), null,
+                ActionResult.success("Built house")
+                    .observation("actionType", "build")
+                    .observation("structure", "house")
+                    .build(), true).status());
+    }
+
+    @Test
     void quantitativeCombatGoalDoesNotCompleteAfterOneKill() {
         AgentGoal goal = AgentGoal.create("Kill 10 zombies", GoalOrigin.USER,
             GoalPriority.USER, null, 1L);

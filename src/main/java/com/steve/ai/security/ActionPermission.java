@@ -82,13 +82,14 @@ public enum ActionPermission {
 
         return switch (actionName.toLowerCase()) {
             case "pathfind", "follow" -> MOVEMENT;
+            case "say" -> INTERACTION;
             case "mine", "gather", "search_resource" -> GATHERING;
             case "place", "build" -> BUILDING;
             case "attack" -> COMBAT;
             case "pickup_item", "give_item", "deposit_item", "withdraw_item",
                  "equip_item", "unequip_item", "drop_item", "consume_item",
                  "inspect_inventory" -> INVENTORY;
-            case "craft", "smelt" -> CRAFTING;
+            case "craft", "smelt", "local" -> CRAFTING;
             default -> ALL;
         };
     }

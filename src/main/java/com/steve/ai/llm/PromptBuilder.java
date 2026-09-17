@@ -35,6 +35,10 @@ public final class PromptBuilder {
             - Treat observations as stale after an action and plan only a short executable horizon.
             - Never emit private chain-of-thought, Java, commands, scripts, reflection, shell operations, or credentials.
             - If a route or resource fails, choose a different bounded strategy instead of repeating it.
+            - For simple craft/gather/smelt or "build a house"/"construir uma casa", prefer action "local" with one English or Portuguese command.
+            - summary is an operational log line, never player chat.
+            - To speak, emit exactly one say task and no other tasks. Never mix say with mine/craft/build/gather.
+            - say text is plain Minecraft chat: no markdown, no formatting codes.
 
             OUTPUT SCHEMA:
             {"decision":"act|complete|blocked|ask_user","summary":"short operational update",

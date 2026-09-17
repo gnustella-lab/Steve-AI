@@ -80,6 +80,7 @@ public class ResponseParser {
             }
 
             if (!isConsistent(decision, goalStatus, tasks)) return null;
+            if (!isSpeechExclusive(tasks)) return null;
             return new ParsedResponse(decision, goalStatus, summary, tasks);
         } catch (Exception e) {
             LOGGER.debug("Rejected AI response ({} characters): {}",
@@ -106,6 +107,18 @@ public class ResponseParser {
             case BLOCKED -> !hasTasks && ("blocked".equals(goalStatus) || "failed".equals(goalStatus));
             case ASK_USER -> !hasTasks && ("paused".equals(goalStatus) || "blocked".equals(goalStatus));
         };
+    }
+
+    /** Player chat cannot share a horizon with world-mutating work. */
+    private static boolean isSpeechExclusive(List<Task> tasks) {
+        boolean anySay = false;
+        for (Task task : tasks) {
+            if ("say".equals(task.getAction())) {
+                anySay = true;
+                break;
+            }
+        }
+        return !anySay || tasks.size() == 1;
     }
 
     private static Decision parseDecision(String value) {
