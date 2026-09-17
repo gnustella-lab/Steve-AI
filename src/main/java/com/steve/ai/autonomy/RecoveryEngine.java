@@ -152,8 +152,10 @@ public final class RecoveryEngine {
         Object requiredAction = result.getObservation("required_action");
         Object requiredItem = result.getObservation("required_item");
         if (requiredAction != null && requiredItem != null
-                && "smelt".equalsIgnoreCase(String.valueOf(requiredAction))) {
-            return "Smelt " + safeQuantity(result.getObservation("required_quantity"))
+                && ("smelt".equalsIgnoreCase(String.valueOf(requiredAction))
+                    || "craft".equalsIgnoreCase(String.valueOf(requiredAction)))) {
+            String verb = "craft".equalsIgnoreCase(String.valueOf(requiredAction)) ? "Craft " : "Smelt ";
+            return verb + safeQuantity(result.getObservation("required_quantity"))
                 + " " + requiredItem;
         }
         Object missing = result.getObservation("missing_item");

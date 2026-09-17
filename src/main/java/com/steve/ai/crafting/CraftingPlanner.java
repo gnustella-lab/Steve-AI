@@ -5,6 +5,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeType;
 
@@ -92,6 +94,14 @@ public class CraftingPlanner {
         // Collect all recipes that could be involved
         collectRelevantRecipes(level, targetItem, graph, recipeMap, new java.util.HashSet<>(), inventory);
 
+        // Table creation consumes real planks too. Include their producer even for
+        // recipes (e.g. furnaces) whose own ingredients contain no wood.
+        if (inventory.count(Items.CRAFTING_TABLE) == 0 && recipeMap.values().stream()
+                .anyMatch(recipe -> !recipe.canCraftInDimensions(2, 2))) {
+            collectRelevantRecipes(level, "minecraft:oak_planks", graph, recipeMap,
+                new java.util.HashSet<>(), inventory);
+        }
+
         List<String> order;
         try {
             order = graph.topologicalSort();
@@ -101,7 +111,7 @@ public class CraftingPlanner {
         }
 
         CraftRequirements requirements = calculateRequirements(
-            order, graph, targetItem, targetQuantity, inventory);
+            order, graph, targetItem, targetQuantity, inventory, recipeMap);
         List<CraftStep> steps = new ArrayList<>();
         for (String recipeId : order) {
             RecipeDependencyGraph.Node node = graph.getNode(recipeId);
@@ -271,7 +281,7 @@ public class CraftingPlanner {
 
     private static CraftRequirements calculateRequirements(List<String> order,
             RecipeDependencyGraph graph, String targetItem, int targetQuantity,
-            SteveInventory inventory) {
+            SteveInventory inventory, Map<String, Recipe<?>> recipeMap) {
         Map<String, Integer> outputDemand = new HashMap<>();
         Map<String, Integer> craftsByRecipe = new HashMap<>();
         List<IngredientResolver.IngredientQuantity> missingRawMaterials = new ArrayList<>();
@@ -290,6 +300,7 @@ public class CraftingPlanner {
 
         outputDemand.put(targetRecipe, targetQuantity);
         InventorySupply supply = new InventorySupply(inventory);
+        reserveCraftingTablePlanks(recipeMap, inventory, supply, missingRawMaterials, graph, outputDemand);
 
         // Dependencies are topologically before dependants, so traverse backwards to propagate
         // exact output demand from the requested item into every intermediate recipe.
@@ -319,6 +330,37 @@ public class CraftingPlanner {
             }
         }
         return new CraftRequirements(Map.copyOf(craftsByRecipe), List.copyOf(missingRawMaterials));
+    }
+
+    private static void reserveCraftingTablePlanks(Map<String, Recipe<?>> recipeMap, SteveInventory inventory,
+            InventorySupply supply, List<IngredientResolver.IngredientQuantity> missingRawMaterials,
+            RecipeDependencyGraph graph, Map<String, Integer> outputDemand) {
+        if (inventory != null && inventory.count(Items.CRAFTING_TABLE) > 0) {
+            return;
+        }
+        boolean needsTable = false;
+        if (recipeMap != null) {
+            for (Recipe<?> recipe : recipeMap.values()) {
+                if (recipe != null && !recipe.canCraftInDimensions(2, 2)) {
+                    needsTable = true;
+                    break;
+                }
+            }
+        }
+        if (!needsTable) {
+            return;
+        }
+        int remaining = supply.consumePlanks(4);
+        if (remaining > 0) {
+            var planks = new IngredientResolver.IngredientQuantity(
+                Ingredient.of(Items.OAK_PLANKS), "minecraft:oak_planks", remaining);
+            String producer = graph.findProducerForIngredient(planks);
+            if (producer != null) {
+                outputDemand.merge(producer, remaining, CraftingPlanner::safeAdd);
+            } else {
+                missingRawMaterials.add(planks);
+            }
+        }
     }
 
     private static int ceilDiv(int numerator, int denominator) {
@@ -360,6 +402,22 @@ public class CraftingPlanner {
                     stack.shrink(taken);
                     remaining -= taken;
                 }
+            }
+            return remaining;
+        }
+
+        private int consumePlanks(int requested) {
+            if (requested <= 0) return 0;
+            int remaining = requested;
+            for (ItemStack stack : stacks) {
+                if (remaining <= 0) break;
+                if (stack.isEmpty()) continue;
+                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                String id = key == null ? "" : key.toString();
+                if (!id.endsWith("_planks")) continue;
+                int taken = Math.min(stack.getCount(), remaining);
+                stack.shrink(taken);
+                remaining -= taken;
             }
             return remaining;
         }

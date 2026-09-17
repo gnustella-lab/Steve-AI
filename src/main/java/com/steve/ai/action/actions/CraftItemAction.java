@@ -300,22 +300,31 @@ public class CraftItemAction extends BaseAction {
             }
         }
 
-        if (steve.getSteveInventory().count(Items.OAK_PLANKS) >= 4
-            || steve.getSteveInventory().count(Items.SPRUCE_PLANKS) >= 4
-            || steve.getSteveInventory().count(Items.BIRCH_PLANKS) >= 4) {
-            Item planks = Items.OAK_PLANKS;
-            if (steve.getSteveInventory().count(planks) < 4) {
-                planks = Items.SPRUCE_PLANKS;
-                if (steve.getSteveInventory().count(planks) < 4) {
-                    planks = Items.BIRCH_PLANKS;
-                }
-            }
+        net.minecraft.world.item.Item planks = findPlanksForTable(4);
+        if (planks != Items.AIR) {
             steve.getSteveInventory().remove(planks, 4);
             steve.getSteveInventory().insert(new ItemStack(Items.CRAFTING_TABLE));
             return true;
         }
 
         return false;
+    }
+
+    private net.minecraft.world.item.Item findPlanksForTable(int needed) {
+        java.util.LinkedHashMap<net.minecraft.world.item.Item, Integer> counts = new java.util.LinkedHashMap<>();
+        for (ItemStack stack : steve.getSteveInventory().getContents()) {
+            if (stack == null || stack.isEmpty()) continue;
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            String id = key == null ? "" : key.toString();
+            if (!id.endsWith("_planks")) continue;
+            counts.merge(stack.getItem(), stack.getCount(), Integer::sum);
+        }
+        for (var entry : counts.entrySet()) {
+            if (entry.getValue() >= needed) {
+                return entry.getKey();
+            }
+        }
+        return Items.AIR;
     }
 
     private String normalize(String name) {

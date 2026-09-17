@@ -21,6 +21,7 @@ import com.steve.ai.planning.Plan;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +38,7 @@ public final class AutonomyController {
     private final GoalQueue goalQueue = new GoalQueue();
     private final GoalEvaluator goalEvaluator = new GoalEvaluator();
     private final LocalGoalPlanner localGoalPlanner = new LocalGoalPlanner();
+    private List<LocalGoalPlanner.Request> localSequence;
     private final RecoveryEngine recoveryEngine = new RecoveryEngine();
     private final FailureTracker failureTracker;
     private final ObservationService observationService;
@@ -199,11 +201,26 @@ public final class AutonomyController {
             executor.stopAutonomousExecution();
         }
 
+        localSequence = null;
         AgentGoal goal = AgentGoal.create(description, GoalOrigin.USER,
             GoalPriority.USER_INTERRUPT,
             null, now, configuredGoalBudget());
-        goal.setConstraints(parseLocalRequest(description).map(request -> GoalConstraints.forItem(request.item(), request.quantity()))
-            .orElseGet(() -> GoalConstraints.fromDescription(description)));
+        var sequence = localGoalPlanner.parseSequence(description, item -> {
+            var id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
+                && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id) != net.minecraft.world.item.Items.AIR;
+        });
+        if (sequence.isPresent() && sequence.get().size() == 2
+                && sequence.get().stream().noneMatch(LocalGoalPlanner.Request::isBuild)) {
+            localSequence = sequence.get();
+            goal.putMetadata("localCompound", true);
+            goal.putMetadata("localTotalSteps", 2);
+            goal.putMetadata("localCompletedSteps", 0);
+            goal.setConstraints(GoalConstraints.forItem(localSequence.get(0).item(), localSequence.get(0).quantity()));
+        } else {
+            goal.setConstraints(parseLocalRequest(description).map(request -> GoalConstraints.forItem(request.item(), request.quantity()))
+                .orElseGet(() -> GoalConstraints.fromDescription(description)));
+        }
         if (controllerUuid != null) goal.putMetadata("controllerUuid", controllerUuid.toString());
         if (interruptedGoal != null) goal.putMetadata("interruptedGoalId", interruptedGoal.toString());
         goalQueue.enqueue(goal);
@@ -456,8 +473,16 @@ public final class AutonomyController {
                 || constraints.targetPosition() != null || !constraints.targetBlock().isBlank()
                 || !constraints.allowExploration()) return false;
         var request = parseLocalRequest(activeGoal.getDescription());
-        if (request.isEmpty()) return false;
-        LocalGoalPlanner.Request local = request.get();
+        LocalGoalPlanner.Request local;
+        boolean isSequence = localSequence != null && !localSequence.isEmpty();
+        if (request.isEmpty() && isSequence) {
+            int done = metadataInt(activeGoal, "localCompletedSteps", 0);
+            local = localSequence.get(Math.min(done, localSequence.size() - 1));
+        } else if (request.isEmpty()) {
+            return false;
+        } else {
+            local = request.get();
+        }
         if (local.isBuild()) {
             if (!constraints.targetItem().isBlank() || constraints.targetPosition() != null) return false;
             Task buildTask = local.task(0);
@@ -484,11 +509,13 @@ public final class AutonomyController {
                     || constraints.targetQuantity() != local.quantity())) return false;
         activeGoal.setConstraints(GoalConstraints.forItem(local.item(), local.quantity()));
         Task task = local.task(countItem(local.item()));
-        if (!originAllowsTasks(activeGoal, List.of(task))) {
+        List<Task> horizon = new ArrayList<>();
+        horizon.add(task);
+        if (!originAllowsTasks(activeGoal, horizon)) {
             blockGoal("The goal origin is not authorized for the requested action", now);
             return true;
         }
-        if (task.getIntParameter("quantity", 0) == 0) {
+        if (task.getIntParameter("quantity", 0) == 0 && !isSequence) {
             completeGoal("Inventory quantity verified before planning", now);
             return true;
         }
@@ -497,7 +524,7 @@ public final class AutonomyController {
             SteveConfig.AUTONOMY_MAX_RETRIES_PER_STEP.get(),
             SteveConfig.AUTONOMY_MAX_REPLANS_PER_GOAL.get(),
             SteveConfig.AUTONOMY_MAX_LLM_CALLS_PER_GOAL.get(), 0, now);
-        currentPlan.loadHorizon(List.of(task), "Local plan: " + activeGoal.getDescription(),
+        currentPlan.loadHorizon(horizon, "Local plan: " + activeGoal.getDescription(),
             "verified item and inventory deficit", now);
         setCurrentPlan(currentPlan);
         executor.acceptAutonomousPlan(currentPlan);
@@ -640,6 +667,18 @@ public final class AutonomyController {
             if (currentPlan != null) {
                 currentPlan.recordCurrentStepResult(completion.result(), now);
                 currentPlan.advanceToNextTask(now);
+            }
+            if (localSequence != null && !localSequence.isEmpty()
+                    && completion.result() != null && completion.result().isSuccess()) {
+                int done = metadataInt(activeGoal, "localCompletedSteps", 0) + 1;
+                activeGoal.putMetadata("localCompletedSteps", done);
+                if (done < localSequence.size()) {
+                    LocalGoalPlanner.Request next = localSequence.get(done);
+                    activeGoal.setConstraints(GoalConstraints.forItem(next.item(), next.quantity()));
+                    setCurrentPlan(null);
+                    moveTo(AgentState.OBSERVING, "next local sequence step " + done);
+                    return;
+                }
             }
             moveTo(AgentState.EVALUATING, "action completed; verify progress");
             GoalEvaluator.Evaluation evaluation = goalEvaluator.evaluate(activeGoal, steve,
@@ -921,6 +960,12 @@ public final class AutonomyController {
     private static String stringMetadata(AgentGoal goal, String key) {
         Object value = goal.getMetadata().get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static int metadataInt(AgentGoal goal, String key, int fallback) {
+        String value = stringMetadata(goal, key);
+        if (value == null) return fallback;
+        try { return Integer.parseInt(value); } catch (NumberFormatException e) { return fallback; }
     }
 
     private void setCurrentPlan(Plan plan) {

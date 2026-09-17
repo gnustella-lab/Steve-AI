@@ -1,0 +1,8 @@
+{
+  "key.categories.steve": "Steve AI",
+  "key.steve.toggle_gui": "Abrir painel do Steve",
+  "gui.steve.close_hint": "Esc: fechar (rascunho salvo)",
+  "gui.steve.help": "Enter: Enviar | ↑↓: Histórico | Rolar: Mensagens",
+  "gui.steve.empty": "Sem mensagens. Digite 'spawn <nome>' abaixo para criar um Steve, ou use /steve spawn <nome> no chat.",
+  "gui.steve.no_agents": "Nenhum Steve encontrado! Digite 'spawn <nome>' aqui, ou /steve spawn <nome> no chat."
+}

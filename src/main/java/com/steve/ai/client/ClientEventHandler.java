@@ -33,7 +33,11 @@ public class ClientEventHandler {
         SteveGUI.tick();
 
         while (KeyBindings.TOGGLE_GUI != null && KeyBindings.TOGGLE_GUI.consumeClick()) {
-            SteveGUI.toggle();
+            var minecraft = net.minecraft.client.Minecraft.getInstance();
+            // Drain queued clicks even in screens; never steal chat/edit-box input.
+            if (PanelKeyPolicy.canOpen(minecraft.player != null, minecraft.screen != null)) {
+                SteveGUI.toggle();
+            }
         }
     }
 }

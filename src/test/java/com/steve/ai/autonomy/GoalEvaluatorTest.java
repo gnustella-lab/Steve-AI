@@ -10,6 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class GoalEvaluatorTest {
     @Test
+    void localCompoundRequiresBothVerifiedStepsNotJustBuildSuccess() {
+        AgentGoal goal = AgentGoal.create("build house and craft stick", GoalOrigin.USER,
+            GoalPriority.USER, null, 1L);
+        goal.putMetadata("localCompound", true);
+        goal.putMetadata("localCompletedSteps", 1);
+        var evaluator = new GoalEvaluator();
+        var build = ActionResult.success("built").observation("actionType", "build").build();
+        assertEquals(GoalEvaluator.Status.IN_PROGRESS,
+            evaluator.evaluate(goal, Map.of(), null, build, true).status());
+        goal.putMetadata("localCompletedSteps", 2);
+        assertEquals(GoalEvaluator.Status.COMPLETE,
+            evaluator.evaluate(goal, Map.of(), null, null, true).status());
+    }
+
+    @Test
     void deterministicItemGoalStaysInProgressUntilQuantityExists() {
         AgentGoal goal = AgentGoal.create("Get 16 iron ingots", GoalOrigin.USER,
             GoalPriority.USER, null, 1L);

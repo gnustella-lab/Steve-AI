@@ -21,7 +21,7 @@ public class KeyBindings {
         TOGGLE_GUI = new KeyMapping(
             "key.steve.toggle_gui",
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_K, // K key
+            GLFW.GLFW_KEY_GRAVE_ACCENT, // Non-letter default; existing user mappings are retained
             KEY_CATEGORY
         );
         

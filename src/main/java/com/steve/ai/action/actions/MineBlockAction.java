@@ -98,56 +98,9 @@ public class MineBlockAction extends BaseAction {
             return;
         }
         
-        net.minecraft.world.entity.player.Player preferredPlayer = findPreferredPlayer();
-        if (preferredPlayer != null && steve.distanceToSqr(preferredPlayer) <= 32.0 * 32.0) {
-            net.minecraft.world.phys.Vec3 eyePos = preferredPlayer.getEyePosition(1.0F);
-            net.minecraft.world.phys.Vec3 lookVec = preferredPlayer.getLookAngle();
-            
-            double angle = Math.atan2(lookVec.z, lookVec.x) * 180.0 / Math.PI;
-            angle = (angle + 360) % 360;
-            
-            if (angle >= 315 || angle < 45) {
-                miningDirectionX = 1; miningDirectionZ = 0; // East (+X)
-            } else if (angle >= 45 && angle < 135) {
-                miningDirectionX = 0; miningDirectionZ = 1; // South (+Z)
-            } else if (angle >= 135 && angle < 225) {
-                miningDirectionX = -1; miningDirectionZ = 0; // West (-X)
-            } else {
-                miningDirectionX = 0; miningDirectionZ = -1; // North (-Z)
-            }
-            
-            net.minecraft.world.phys.Vec3 targetPos = eyePos.add(lookVec.scale(3));
-            
-            BlockPos lookTarget = new BlockPos(
-                (int)Math.floor(targetPos.x),
-                (int)Math.floor(targetPos.y),
-                (int)Math.floor(targetPos.z)
-            );
-            
-            miningStartPos = lookTarget;
-            for (int y = lookTarget.getY(); y > lookTarget.getY() - 20 && y > -64; y--) {
-                BlockPos groundCheck = new BlockPos(lookTarget.getX(), y, lookTarget.getZ());
-                if (steve.level().getBlockState(groundCheck).isSolid()) {
-                    miningStartPos = groundCheck.above(); // Stand on top of solid block
-                    break;
-                }
-            }
-            
-            currentTunnelPos = miningStartPos;
-            steve.getNavigation().moveTo(miningStartPos.getX() + 0.5, miningStartPos.getY(),
-                miningStartPos.getZ() + 0.5, 1.0);
-            
-            String[] dirNames = {"North", "East", "South", "West"};
-            int dirIndex = miningDirectionZ == -1 ? 0 : (miningDirectionX == 1 ? 1 : (miningDirectionZ == 1 ? 2 : 3));
-            SteveMod.LOGGER.info("Steve '{}' mining {} in ONE direction: {}", 
-                steve.getSteveName(), targetBlock.getName().getString(), dirNames[dirIndex]);
-        } else {
-            miningStartPos = steve.blockPosition();
-            currentTunnelPos = miningStartPos;
-            miningDirectionX = 1; // Default to East
-            miningDirectionZ = 0;
-        }
-        
+        miningStartPos = steve.blockPosition().immutable();
+        currentTunnelPos = miningStartPos;
+
         equipBestToolForMining();
         
         SteveMod.LOGGER.info("Steve '{}' mining {} - staying at {} [SLOW & VISIBLE]", 
@@ -191,7 +144,7 @@ public class MineBlockAction extends BaseAction {
                     result = ActionResult.success("Mined " + minedCount + " " + targetBlock.getName().getString()).build();
                     return;
                 } else {
-                    mineNearbyBlock();
+                    result = searchFailure("No matching block found in the local search area");
                     return;
                 }
             }
@@ -403,20 +356,19 @@ public class MineBlockAction extends BaseAction {
     private void findNextBlock() {
         List<BlockPos> foundBlocks = new ArrayList<>();
         
-        for (int distance = 0; distance < 20; distance++) {
-            BlockPos checkPos = currentTunnelPos.offset(miningDirectionX * distance, 0, miningDirectionZ * distance);
-            
-            for (int y = -1; y <= 1; y++) {
-                BlockPos orePos = checkPos.offset(0, y, 0);
-                if (steve.level().getBlockState(orePos).getBlock() == targetBlock
-                        && !isProtected(orePos)
-                        && !ResourceReservationBoard.getInstance().isHeldByOther(
-                            dimension(), orePos, steve.getUUID(), currentTick())) {
-                    foundBlocks.add(orePos);
-                }
+        for (BlockPos position : BlockPos.betweenClosed(
+                miningStartPos.offset(-searchRadius, -searchRadius, -searchRadius),
+                miningStartPos.offset(searchRadius, searchRadius, searchRadius))) {
+            if (position.distSqr(miningStartPos) > searchRadius * searchRadius
+                    || !steve.level().hasChunkAt(position)) continue;
+            if (steve.level().getBlockState(position).getBlock() == targetBlock
+                    && !isProtected(position)
+                    && !ResourceReservationBoard.getInstance().isHeldByOther(
+                        dimension(), position, steve.getUUID(), currentTick())) {
+                foundBlocks.add(position.immutable());
             }
         }
-        
+
         if (!foundBlocks.isEmpty()) {
             foundBlocks.sort((a, b) -> Double.compare(a.distSqr(currentTunnelPos), b.distSqr(currentTunnelPos)));
             currentTarget = null;
@@ -507,6 +459,14 @@ public class MineBlockAction extends BaseAction {
         
         ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
         return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+    }
+
+    private ActionResult searchFailure(String message) {
+        return ActionResult.failure(ActionResult.ERROR_TARGET_NOT_FOUND, message)
+            .retryable(false).requiresReplanning(true).partialSuccess(minedCount > 0)
+            .observation("target_block", BuiltInRegistries.BLOCK.getKey(targetBlock).toString())
+            .observation("mined", minedCount).observation("requested", targetQuantity)
+            .observation("search_exhausted", true).build();
     }
 
     private boolean isProtected(BlockPos pos) {

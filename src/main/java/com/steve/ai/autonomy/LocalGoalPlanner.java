@@ -113,6 +113,20 @@ public final class LocalGoalPlanner {
         }
     }
 
+    /** One command or exactly two independently valid commands; no open-ended tails. */
+    public Optional<java.util.List<Request>> parseSequence(String description, Predicate<String> registeredItem) {
+        if (description == null || description.length() > 256) return Optional.empty();
+        String[] clauses = normalize(description).split("\\s+(?:e|and)\\s+", -1);
+        if (clauses.length < 1 || clauses.length > 2) return Optional.empty();
+        java.util.List<Request> requests = new java.util.ArrayList<>();
+        for (String clause : clauses) {
+            var request = parse(clause, registeredItem);
+            if (request.isEmpty()) return Optional.empty();
+            requests.add(request.get());
+        }
+        return Optional.of(java.util.List.copyOf(requests));
+    }
+
     public Optional<Request> parse(String description, Predicate<String> registeredItem) {
         if (description == null || description.length() > 256) return Optional.empty();
         String normalized = normalize(description);
@@ -153,13 +167,21 @@ public final class LocalGoalPlanner {
             ? new String[] {token, token.contains(":") ? token : "minecraft:" + token}
             : new String[] {aliased};
         for (String candidate : candidates) {
-            if (registeredItem.test(candidate)) return candidate;
+            if (registeredItem.test(candidate)) return canonicalItem(candidate);
             if (candidate.endsWith("s")) {
                 String singular = candidate.substring(0, candidate.length() - 1);
-                if (registeredItem.test(singular)) return singular;
+                if (registeredItem.test(singular)) return canonicalItem(singular);
             }
         }
         return null;
+    }
+
+    /** Namespace-qualifies a resolved id so every consumer (recipe lookups, constraint equality
+     * gates) receives a canonical {@code minecraft:...} form. {@code ResourceLocation.tryParse}
+     * defaults a bare id to the minecraft namespace, so a bare match would otherwise leak out of
+     * {@link #resolveItem} and break local-plan gating. */
+    private static String canonicalItem(String id) {
+        return id == null || id.indexOf(':') >= 0 ? id : "minecraft:" + id;
     }
 
     private static String actionSpecificAlias(String key, String action) {

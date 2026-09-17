@@ -1,5 +1,8 @@
 {
   "key.categories.steve": "Steve AI",
-  "key.steve.toggle_gui": "Toggle Steve Panel"
+  "key.steve.toggle_gui": "Open Steve Panel",
+  "gui.steve.close_hint": "Esc: close (draft saved)",
+  "gui.steve.help": "Enter: Send | ↑↓: History | Scroll: Messages",
+  "gui.steve.empty": "No messages yet. Type 'spawn <name>' below to create a Steve, or use /steve spawn <name> in chat.",
+  "gui.steve.no_agents": "No Steve agents found! Type 'spawn <name>' here, or /steve spawn <name> in chat."
 }
-

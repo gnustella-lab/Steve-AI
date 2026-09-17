@@ -268,13 +268,21 @@ public class BuildStructureAction extends BaseAction {
                             CollaborativeBuildManager.returnBlock(
                                 collaborativeBuild, steve.getSteveName(), placement);
                             String missing = BuiltInRegistries.ITEM.getKey(neededItem).toString();
-                            result = ActionResult.failure(ActionResult.ERROR_RESOURCE,
+                            int remaining = countRemaining(blockState.getBlock());
+                            ActionResult.Builder failure = ActionResult.failure(ActionResult.ERROR_RESOURCE,
                                 "Missing building material in inventory: " + missing)
                                 .retryable(true)
                                 .observation("actionType", "build")
                                 .observation("missing_item", missing)
-                                .observation("missing_quantity", countRemaining(blockState.getBlock()))
-                                .build();
+                                .observation("missing_quantity", remaining);
+                            if (steve.level() instanceof ServerLevel level && level.getRecipeManager()
+                                    .getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING).stream()
+                                    .anyMatch(recipe -> recipe.getResultItem(level.registryAccess()).is(neededItem))) {
+                                failure.observation("required_action", "craft")
+                                    .observation("required_item", missing)
+                                    .observation("required_quantity", remaining);
+                            }
+                            result = failure.build();
                             return;
                         }
                     }

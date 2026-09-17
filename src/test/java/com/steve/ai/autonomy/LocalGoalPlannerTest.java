@@ -70,6 +70,21 @@ class LocalGoalPlannerTest {
     }
 
     @Test
+    void parsesExactlyTwoClosedCommandsInOrder() {
+        var requests = planner.parseSequence("fazer graveto e coletar tronco", items::contains).orElseThrow();
+        assertEquals(2, requests.size());
+        assertEquals("craft", requests.get(0).action());
+        assertEquals("minecraft:stick", requests.get(0).item());
+        assertEquals("gather", requests.get(1).action());
+        assertEquals("minecraft:oak_log", requests.get(1).item());
+        assertEquals(2, planner.parseSequence("make 8 sticks and collect 4 oak logs", items::contains).orElseThrow().size());
+        for (String invalid : new String[]{"craft stick and say hello", "craft stick and gather oak_log and build house",
+                "craft stick e depois coletar tronco", "craft stick and gather unknown", "craft stick and", "and craft stick"}) {
+            assertTrue(planner.parseSequence(invalid, items::contains).isEmpty(), invalid);
+        }
+    }
+
+    @Test
     void plansOnlyInventoryDeficit() {
         var request = planner.parse("smelt 16 iron_ingot", items::contains).orElseThrow();
         assertEquals(1, request.task(15).getIntParameter("quantity", -1));

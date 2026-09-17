@@ -12,6 +12,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecoveryEngineTest {
     @Test
+    void houseMaterialsBecomeCraftPrerequisiteRatherThanMiningPlanks() {
+        Task build = new Task("build", Map.of("structure", "house"));
+        ActionResult dependency = ActionResult.failure(ActionResult.ERROR_RESOURCE, "Missing planks")
+            .retryable(true)
+            .observation("missing_item", "minecraft:oak_planks")
+            .observation("required_action", "craft")
+            .observation("required_item", "minecraft:oak_planks")
+            .observation("required_quantity", 180).build();
+        RecoveryDecision decision = new RecoveryEngine().decide(null, build, dependency,
+            new FailureTracker(2), BlockPos.ZERO);
+        assertEquals("Craft 180 minecraft:oak_planks", decision.prerequisiteDescription());
+    }
+
+    @Test
     void deterministicPolicyCreatesPrerequisiteForMissingResource() {
         AgentGoal goal = AgentGoal.create("Craft an iron pickaxe", GoalOrigin.USER,
             GoalPriority.USER, null, 1L);

@@ -38,6 +38,12 @@ public final class GoalEvaluator {
             BlockPos position, ActionResult lastResult, boolean planExhausted) {
         if (goal == null) return new Evaluation(Status.UNKNOWN, "No goal", false);
         GoalConstraints constraints = goal.getConstraints();
+        if (Boolean.parseBoolean(String.valueOf(goal.getMetadata().get("localCompound")))) {
+            int completedSteps = parseInt(String.valueOf(goal.getMetadata().get("localCompletedSteps")), 0);
+            boolean done = completedSteps == 2;
+            return new Evaluation(done ? Status.COMPLETE : Status.IN_PROGRESS,
+                done ? "Both local commands verified in order" : "Local command sequence is not finished", true);
+        }
 
         boolean requiresPosition = constraints.targetPosition() != null;
         boolean positionReached = requiresPosition && position != null
@@ -135,6 +141,14 @@ public final class GoalEvaluator {
         if (result == null) return 0;
         Object value = result.getObservation(key);
         return value instanceof Number number ? Math.max(0, number.intValue()) : 0;
+    }
+
+    private static int parseInt(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static String normalizeId(String value) {

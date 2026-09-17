@@ -27,6 +27,7 @@ public class SteveGUI {
     private static boolean isOpen = false;
     private static float slideOffset = PANEL_WIDTH; // Start fully hidden
     private static EditBox inputBox;
+    private static String inputDraft = "";
     private static List<String> commandHistory = new ArrayList<>();
     private static int historyIndex = -1;
     
@@ -71,6 +72,7 @@ public class SteveGUI {
             }
         } else {
             if (inputBox != null) {
+                inputDraft = inputBox.getValue();
                 inputBox = null;
             }
             if (mc.screen instanceof SteveOverlayScreen) {
@@ -89,6 +91,7 @@ public class SteveGUI {
             inputBox = new EditBox(mc.font, 0, 0, PANEL_WIDTH - 20, 20, 
                 Component.literal("Command"));
             inputBox.setMaxLength(256);
+            inputBox.setValue(inputDraft);
             inputBox.setHint(Component.literal("Tell Steve what to do..."));
             inputBox.setFocused(true);
         }
@@ -173,7 +176,7 @@ public class SteveGUI {
         int headerHeight = 35;
         graphics.fillGradient(panelX, panelY, screenWidth, headerHeight, HEADER_COLOR, HEADER_COLOR);
         graphics.drawString(mc.font, "§lSteve AI", panelX + PANEL_PADDING, panelY + 8, TEXT_COLOR);
-        graphics.drawString(mc.font, "§7Press K to close", panelX + PANEL_PADDING, panelY + 20, 0xFF888888);
+        graphics.drawString(mc.font, Component.translatable("gui.steve.close_hint"), panelX + PANEL_PADDING, panelY + 20, 0xFF888888);
 
         // Message history area
         int inputAreaY = screenHeight - 80;
@@ -181,13 +184,10 @@ public class SteveGUI {
         int messageAreaHeight = inputAreaY - messageAreaTop - 5;
         int messageAreaBottom = messageAreaTop + messageAreaHeight;
 
-        int totalMessageHeight = 0;
-        for (ChatMessage msg : messages) {
-            int maxBubbleWidth = PANEL_WIDTH - (PANEL_PADDING * 3);
-            String wrappedText = wrapText(mc.font, msg.text, maxBubbleWidth - 10);
-            int bubbleHeight = MESSAGE_HEIGHT + 10; // bubble padding
-            totalMessageHeight += bubbleHeight + 5 + 12; // message + spacing + name
-        }
+        var layouts = messages.stream().map(msg -> MessageLayout.of(
+            mc.font.split(Component.literal(msg.text), PANEL_WIDTH - PANEL_PADDING * 3 - 10),
+            line -> mc.font.width(line), MESSAGE_HEIGHT)).toList();
+        int totalMessageHeight = layouts.stream().mapToInt(MessageLayout::totalHeight).sum() + 5;
         maxScroll = Math.max(0, totalMessageHeight - messageAreaHeight);
         scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
 
@@ -198,27 +198,24 @@ public class SteveGUI {
         graphics.enableScissor(panelX, messageAreaTop, screenWidth, messageAreaBottom);
         
         if (messages.isEmpty()) {
-            graphics.drawString(mc.font, "§7No messages yet...", 
-                panelX + PANEL_PADDING, yPos, 0xFF666666);
-            graphics.drawString(mc.font, "§7Type a command below!", 
-                panelX + PANEL_PADDING, yPos + 12, 0xFF555555);
+            for (var line : mc.font.split(Component.translatable("gui.steve.empty"), PANEL_WIDTH - PANEL_PADDING * 2)) {
+                graphics.drawString(mc.font, line, panelX + PANEL_PADDING, yPos, 0xFF888888);
+                yPos += MESSAGE_HEIGHT;
+            }
         } else {
             int currentY = messageAreaBottom - 5; // Start from bottom
             
             for (int i = messages.size() - 1; i >= 0; i--) {
                 ChatMessage msg = messages.get(i);
                 
-                int maxBubbleWidth = PANEL_WIDTH - (PANEL_PADDING * 3); // Leave space on sides
-                String wrappedText = wrapText(mc.font, msg.text, maxBubbleWidth - 10);
-                int textWidth = mc.font.width(wrappedText);
-                int textHeight = MESSAGE_HEIGHT;
-                int bubbleWidth = Math.min(textWidth + 10, maxBubbleWidth);
-                int bubbleHeight = textHeight + 10;
+                var layout = layouts.get(i);
+                int bubbleWidth = layout.bubbleWidth();
+                int bubbleHeight = layout.bubbleHeight();
                 
                 int msgY = currentY - bubbleHeight + scrollOffset;
                 
                 if (msgY + bubbleHeight < messageAreaTop - 20 || msgY > messageAreaBottom + 20) {
-                    currentY -= bubbleHeight + 5;
+                    currentY -= layout.totalHeight();
                     continue;
                 }
                 
@@ -233,7 +230,10 @@ public class SteveGUI {
                     graphics.drawString(mc.font, "§7" + msg.sender, bubbleX, msgY - 12, 0xFFCCCCCC);
                     
                     // Draw message text (white on colored bubble)
-                    graphics.drawString(mc.font, wrappedText, bubbleX + 5, msgY + 5, 0xFFFFFFFF);
+                    for (int line = 0; line < layout.lines().size(); line++) {
+                        graphics.drawString(mc.font, layout.lines().get(line), bubbleX + 5,
+                            msgY + 5 + line * MESSAGE_HEIGHT, TEXT_COLOR);
+                    }
                     
                 } else {
                     int bubbleX = panelX + PANEL_PADDING;
@@ -245,10 +245,13 @@ public class SteveGUI {
                     graphics.drawString(mc.font, "§l" + msg.sender, bubbleX, msgY - 12, TEXT_COLOR);
                     
                     // Draw message text (white on colored bubble)
-                    graphics.drawString(mc.font, wrappedText, bubbleX + 5, msgY + 5, 0xFFFFFFFF);
+                    for (int line = 0; line < layout.lines().size(); line++) {
+                        graphics.drawString(mc.font, layout.lines().get(line), bubbleX + 5,
+                            msgY + 5 + line * MESSAGE_HEIGHT, TEXT_COLOR);
+                    }
                 }
                 
-                currentY -= bubbleHeight + 5 + 12; // Extra space for sender name
+                currentY -= layout.totalHeight();
             }
         }
         
@@ -271,37 +274,25 @@ public class SteveGUI {
             inputBox.render(graphics, (int)mc.mouseHandler.xpos(), (int)mc.mouseHandler.ypos(), mc.getFrameTime());
         }
 
-        graphics.drawString(mc.font, "§8Enter: Send | ↑↓: History | Scroll: Messages", 
-            panelX + PANEL_PADDING, screenHeight - 15, 0xFF555555);
+        int helpY = inputAreaY + 50;
+        for (var line : mc.font.split(Component.translatable("gui.steve.help"), PANEL_WIDTH - PANEL_PADDING * 2)) {
+            graphics.drawString(mc.font, line, panelX + PANEL_PADDING, helpY, 0xFF888888);
+            helpY += MESSAGE_HEIGHT;
+        }
         
         RenderSystem.disableBlend();
     }
 
-    /**
-     * Simple word wrap for text
-     */
-    private static String wrapText(net.minecraft.client.gui.Font font, String text, int maxWidth) {
-        if (font.width(text) <= maxWidth) {
-            return text;
-        }
-        // Simple truncation for now
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < text.length(); i++) {
-            result.append(text.charAt(i));
-            if (font.width(result.toString() + "...") >= maxWidth) {
-                return result.substring(0, result.length() - 3) + "...";
-            }
-        }
-        return result.toString();
-    }
 
     public static boolean handleKeyPress(int keyCode, int scanCode, int modifiers) {
         if (!isOpen || inputBox == null) return false;
 
         Minecraft mc = Minecraft.getInstance();
         
-        // Escape key - close panel
-        if (keyCode == 256) { // ESC
+        // Focused text input wins over any rebound printable shortcut (including K).
+        boolean bindingMatches = KeyBindings.TOGGLE_GUI != null
+            && KeyBindings.TOGGLE_GUI.matches(keyCode, scanCode);
+        if (PanelKeyPolicy.shouldClose(keyCode == 256, bindingMatches, inputBox.isFocused(), modifiers)) {
             toggle();
             return true;
         }
@@ -338,12 +329,8 @@ public class SteveGUI {
             return true;
         }
 
-        // Backspace, Delete, Home, End, Left, Right - pass to input box
-        if (keyCode == 259 || keyCode == 261 || keyCode == 268 || keyCode == 269 || 
-            keyCode == 263 || keyCode == 262) {
-            inputBox.keyPressed(keyCode, scanCode, modifiers);
-            return true;
-        }
+        // Let the widget handle all editing shortcuts, especially Ctrl/Cmd+A/C/V/X.
+        inputBox.keyPressed(keyCode, scanCode, modifiers);
 
         return true; // Consume all keys to prevent game controls
     }
@@ -377,7 +364,7 @@ public class SteveGUI {
         if (!isOpen) return;
         
         int scrollAmount = (int)(scrollDelta * 3 * MESSAGE_HEIGHT);
-        scrollOffset -= scrollAmount;
+        scrollOffset += scrollAmount;
         scrollOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
     }
 
@@ -413,7 +400,7 @@ public class SteveGUI {
                 targetSteves.add(steves.get(0).getSteveName());
             } else {
                 // No Steves available
-                addSystemMessage("No Steve agents found! Use 'spawn <name>' to create one.");
+                addSystemMessage(Component.translatable("gui.steve.no_agents").getString());
                 return;
             }
         }
