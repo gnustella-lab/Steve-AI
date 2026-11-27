@@ -83,12 +83,12 @@ public class LocalCommandAction extends BaseAction {
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
             return 0;
         }
-        return steve.getSteveInventory().count(BuiltInRegistries.ITEM.get(id));
+        return steve.getSteveInventory().count(com.steve.ai.util.ModApi.item(id));
     }
 
     private static boolean registeredItem(String item) {
         Identifier id = Identifier.tryParse(item);
         return id != null && BuiltInRegistries.ITEM.containsKey(id)
-            && BuiltInRegistries.ITEM.get(id) != Items.AIR;
+            && com.steve.ai.util.ModApi.item(id) != Items.AIR;
     }
 }

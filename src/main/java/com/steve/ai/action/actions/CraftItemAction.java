@@ -206,7 +206,7 @@ public class CraftItemAction extends BaseAction {
         currentStepIndex++;
 
         if (!remainder.isEmpty()) {
-            steve.spawnAtLocation(remainder);
+            steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), remainder);
         }
 
         if (step.resultItem().equalsIgnoreCase(itemName)
@@ -340,6 +340,6 @@ public class CraftItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

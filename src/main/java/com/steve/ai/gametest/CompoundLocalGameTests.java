@@ -18,7 +18,7 @@ public final class CompoundLocalGameTests {
     public static void craftsInOrderAndRecountsSecondTarget(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Compound");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         steve.getAutonomyController().setPlanner(context -> {
             throw new AssertionError("Compound must never call LLM");

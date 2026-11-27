@@ -194,12 +194,12 @@ public final class AgentGoal {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
-        tag.putUUID("Id", id);
+        com.steve.ai.util.NbtCompat.putUUID(tag, "Id", id);
         tag.putString("Description", description);
         tag.putString("Origin", origin.name());
         tag.putString("Priority", priority.name());
         tag.putString("Status", status.name());
-        if (parentGoalId != null) tag.putUUID("ParentGoalId", parentGoalId);
+        if (parentGoalId != null) com.steve.ai.util.NbtCompat.putUUID(tag, "ParentGoalId", parentGoalId);
         tag.putLong("CreatedAt", createdAt);
         tag.putLong("UpdatedAt", updatedAt);
         tag.putInt("AttemptCount", progress.getAttemptCount());
@@ -225,12 +225,12 @@ public final class AgentGoal {
             return create("Restored goal", GoalOrigin.USER, GoalPriority.USER, null, 0L);
         }
         AgentGoal goal = new AgentGoal(
-            tag.hasUUID("Id") ? tag.getUUID("Id") : UUID.randomUUID(),
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "Id") ? com.steve.ai.util.NbtCompat.getUUID(tag, "Id").orElse(null) : UUID.randomUUID(),
             tag.getStringOr("Description", ""),
             readEnum(tag.getStringOr("Origin", ""), GoalOrigin.USER),
             readEnum(tag.getStringOr("Priority", ""), GoalPriority.USER),
             readEnum(tag.getStringOr("Status", ""), GoalStatus.PAUSED),
-            tag.hasUUID("ParentGoalId") ? tag.getUUID("ParentGoalId") : null,
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "ParentGoalId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "ParentGoalId").orElse(null) : null,
             tag.getLongOr("CreatedAt", 0L),
             tag.contains("UpdatedAt") ? tag.getLongOr("UpdatedAt", 0L) : tag.getLongOr("CreatedAt", 0L),
             tag.getIntOr("AttemptCount", 0),

@@ -30,7 +30,7 @@ class LocalGoalPlannerCanonicalIdTest {
         Identifier rl = Identifier.tryParse(id);
         return rl != null
             && BuiltInRegistries.ITEM.containsKey(rl)
-            && BuiltInRegistries.ITEM.get(rl) != Items.AIR;
+            && com.steve.ai.util.ModApi.item(rl) != Items.AIR;
     };
 
     @BeforeAll

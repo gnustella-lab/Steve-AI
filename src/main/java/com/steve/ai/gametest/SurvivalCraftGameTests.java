@@ -23,7 +23,7 @@ public final class SurvivalCraftGameTests {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Craft_" + UUID.randomUUID().toString().substring(0, 8));
         helper.setBlock(new BlockPos(1, 0, 1), Blocks.STONE);
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 1, 1)), 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 1, 1))));
         steve.setPersistenceRequired();
         steve.getAutonomyController().setPlanner(context -> { throw new AssertionError("LLM called"); });
         helper.getLevel().addFreshEntity(steve);

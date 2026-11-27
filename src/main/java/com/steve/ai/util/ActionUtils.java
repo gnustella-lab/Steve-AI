@@ -64,6 +64,6 @@ public class ActionUtils {
         }
 
         Identifier resourceLocation = Identifier.tryParse(blockName);
-        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+        return resourceLocation != null ? com.steve.ai.util.ModApi.block(resourceLocation) : Blocks.AIR;
     }
 }

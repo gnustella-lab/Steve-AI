@@ -166,6 +166,6 @@ public final class GoalEvaluator {
         String normalized = name.toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
         if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
         Identifier location = Identifier.tryParse(normalized);
-        return location == null ? Items.AIR : BuiltInRegistries.ITEM.get(location);
+        return location == null ? Items.AIR : com.steve.ai.util.ModApi.item(location);
     }
 }

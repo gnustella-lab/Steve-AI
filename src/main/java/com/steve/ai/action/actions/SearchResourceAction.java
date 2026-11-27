@@ -140,7 +140,7 @@ public final class SearchResourceAction extends BaseAction {
         };
         if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
         Identifier id = Identifier.tryParse(normalized);
-        return id == null ? Blocks.AIR : BuiltInRegistries.BLOCK.get(id);
+        return id == null ? Blocks.AIR : com.steve.ai.util.ModApi.block(id);
     }
 
     private long currentTick() {
@@ -150,6 +150,6 @@ public final class SearchResourceAction extends BaseAction {
 
     private String dimension() {
         return steve.level() instanceof ServerLevel level
-            ? level.dimension().location().toString() : "unknown";
+            ? level.dimension().identifier().toString() : "unknown";
     }
 }

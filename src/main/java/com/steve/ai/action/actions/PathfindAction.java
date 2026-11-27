@@ -160,7 +160,7 @@ public class PathfindAction extends BaseAction {
         String dimension = "unknown";
         if (steve.level() instanceof ServerLevel level && level.getServer() != null) {
             now = level.getServer().getTickCount();
-            dimension = level.dimension().location().toString();
+            dimension = level.dimension().identifier().toString();
         }
         return steve.getMemory().getRelevantFacts("path", 8, now, dimension, candidate, 2.5)
             .stream()
@@ -184,7 +184,7 @@ public class PathfindAction extends BaseAction {
         steve.getMemory().rememberWorldFact(new WorldFact(
             WorldFact.Kind.FAILURE,
             "path:" + (targetPos == null ? "unknown" : targetPos.toShortString()),
-            level.dimension().location().toString(),
+            level.dimension().identifier().toString(),
             steve.blockPosition(),
             level.getServer().getTickCount(),
             0.9,

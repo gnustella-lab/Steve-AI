@@ -55,7 +55,7 @@ public class EquipItemAction extends BaseAction {
             return;
         }
 
-        if (slot.getType() == net.minecraft.world.entity.EquipmentSlot.Type.ARMOR
+        if (slot.isArmor()
                 && (targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE) == null
                     || targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE).slot() != slot)) {
             result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
@@ -80,7 +80,7 @@ public class EquipItemAction extends BaseAction {
         if (previouslyEquipped != null && !previouslyEquipped.isEmpty()) {
             ItemStack remainder = steve.getSteveInventory().insert(previouslyEquipped);
             if (!remainder.isEmpty()) {
-                steve.spawnAtLocation(remainder);
+                steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), remainder);
             }
         }
 
@@ -117,6 +117,6 @@ public class EquipItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

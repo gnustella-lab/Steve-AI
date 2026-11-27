@@ -546,7 +546,7 @@ public final class SteveInventory {
         if (tag.contains("Equipment")) {
             CompoundTag equipmentTag = tag.getCompoundOrEmpty("Equipment");
             for (EquipmentSlot slot : EquipmentSlot.values()) {
-                if (equipmentTag.contains(slot.getName(), CompoundTag.TAG_COMPOUND)) {
+                if (equipmentTag.contains(slot.getName())) {
                     Tag stackTag = equipmentTag.get(slot.getName());
                     if (stackTag != null) {
                         DataResult<ItemStack> decoded = ItemStack.OPTIONAL_CODEC.parse(NbtOps.INSTANCE, stackTag);

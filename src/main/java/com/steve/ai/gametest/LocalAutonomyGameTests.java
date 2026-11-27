@@ -28,7 +28,7 @@ public final class LocalAutonomyGameTests {
             "This suite requires an offline configuration with zero LLM budget");
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Local_" + UUID.randomUUID().toString().substring(0, 8));
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         steve.getAutonomyController().setPlanner(context -> {
             throw new AssertionError("Local goals must not call the LLM");

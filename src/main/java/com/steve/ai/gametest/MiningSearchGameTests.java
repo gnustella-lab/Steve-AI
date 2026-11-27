@@ -20,7 +20,7 @@ public final class MiningSearchGameTests {
     public static void targetOutsideLocalRadiusIsNotChased(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
-        steve.moveTo(origin, 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(origin));
         BlockPos distant = origin.east(9);
         helper.getLevel().setBlock(distant, Blocks.STRIPPED_BIRCH_LOG.defaultBlockState(), 3);
         GatherResourceAction action = new GatherResourceAction(steve,
@@ -39,7 +39,7 @@ public final class MiningSearchGameTests {
     public static void absentResourceStopsWithoutExcavating(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
-        steve.moveTo(origin, 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(origin));
         // Do not add the entity: drive only the action, not unrelated autonomy ticks.
         helper.getLevel().setBlock(origin, Blocks.DIRT.defaultBlockState(), 3);
         GatherResourceAction action = new GatherResourceAction(steve,

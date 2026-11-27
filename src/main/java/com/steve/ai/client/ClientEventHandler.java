@@ -31,7 +31,7 @@ public class ClientEventHandler {
         while (KeyBindings.TOGGLE_GUI != null && KeyBindings.TOGGLE_GUI.consumeClick()) {
             var minecraft = net.minecraft.client.Minecraft.getInstance();
             // Drain queued clicks even in screens; never steal chat/edit-box input.
-            if (PanelKeyPolicy.canOpen(minecraft.player != null, minecraft.screen != null)) {
+            if (PanelKeyPolicy.canOpen(minecraft.player != null, minecraft.gui.screen() != null)) {
                 SteveGUI.toggle();
             }
         }

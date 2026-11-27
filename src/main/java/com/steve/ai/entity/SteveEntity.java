@@ -231,8 +231,9 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag tag) {
-        super.addAdditionalSaveData(tag);
+    public void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        CompoundTag tag = new CompoundTag();
         tag.putString("SteveName", getSteveName());
         if (autonomyController != null) {
             autonomyController.prepareForSave();
@@ -243,11 +244,13 @@ public class SteveEntity extends PathfinderMob {
         tag.put("Memory", memoryTag);
         tag.put("SteveInventory", inventory.save());
         tag.put("AccessProfile", accessProfile.save());
+        output.store("SteveData", CompoundTag.CODEC, tag);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag tag) {
-        super.readAdditionalSaveData(tag);
+    public void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput input) {
+        super.readAdditionalSaveData(input);
+        CompoundTag tag = input.read("SteveData", CompoundTag.CODEC).orElse(new CompoundTag());
         if (tag.contains("SteveName")) {
             this.setSteveName(tag.getStringOr("SteveName", ""));
         }
@@ -330,7 +333,6 @@ public class SteveEntity extends PathfinderMob {
         if (!serverLevel.destroyBlock(position, false, this)) {
             return false;
         }
-        state.spawnAfterBreak(serverLevel, position, tool, true);
         applyToolWear(state, tool);
         for (ItemStack drop : drops) {
             ItemStack remainder = inventory.insert(drop);

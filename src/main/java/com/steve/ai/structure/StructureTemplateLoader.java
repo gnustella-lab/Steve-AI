@@ -90,7 +90,7 @@ public class StructureTemplateLoader {
         
         try {
             Identifier resourceLocation = Identifier.fromNamespaceAndPath("steve", structureName);
-            var templateManager = level.getStructureManager();
+            var templateManager = level.getStructureTemplateManager();
             var template = templateManager.get(resourceLocation);
             
             if (template.isPresent()) {                return loadFromMinecraftTemplate(template.get(), structureName);
@@ -153,7 +153,7 @@ public class StructureTemplateLoader {
             CompoundTag blockTag = paletteList.getCompoundOrEmpty(i);
             try {
                 palette.add(NbtUtils.readBlockState(
-                    net.minecraft.core.registries.BuiltInRegistries.BLOCK.asLookup(), blockTag));
+                    net.minecraft.core.registries.BuiltInRegistries.BLOCK, blockTag));
             } catch (Exception e) {
                 SteveMod.LOGGER.warn("Invalid block state in template: {}, using air", blockTag);
                 palette.add(Blocks.AIR.defaultBlockState());

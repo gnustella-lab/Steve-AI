@@ -69,7 +69,7 @@ public class SteveGUI {
         
         if (isOpen) {
             initializeInputBox();
-            mc.setScreen(new SteveOverlayScreen());
+            mc.gui.setScreen(new SteveOverlayScreen());
             if (inputBox != null) {
                 inputBox.setFocused(true);
             }
@@ -78,8 +78,8 @@ public class SteveGUI {
                 inputDraft = inputBox.getValue();
                 inputBox = null;
             }
-            if (mc.screen instanceof SteveOverlayScreen) {
-                mc.setScreen(null);
+            if (mc.gui.screen() instanceof SteveOverlayScreen) {
+                mc.gui.setScreen(null);
             }
         }
     }
@@ -267,7 +267,7 @@ public class SteveGUI {
             inputBox.setX(panelX + PANEL_PADDING);
             inputBox.setY(inputAreaY + 25);
             inputBox.setWidth(PANEL_WIDTH - (PANEL_PADDING * 2));
-            inputBox.render(graphics, (int)mc.mouseHandler.xpos(), (int)mc.mouseHandler.ypos(), mc.getFrameTime());
+            inputBox.extractWidgetRenderState(graphics, (int) mc.mouseHandler.xpos(), (int) mc.mouseHandler.ypos(), 0.0F);
         }
 
         int helpY = inputAreaY + 50;
@@ -285,7 +285,7 @@ public class SteveGUI {
         
         // Focused text input wins over any rebound printable shortcut (including K).
         boolean bindingMatches = KeyBindings.TOGGLE_GUI != null
-            && KeyBindings.TOGGLE_GUI.matches(keyCode, scanCode);
+            && KeyBindings.TOGGLE_GUI.matches(new net.minecraft.client.input.KeyEvent(keyCode, scanCode, modifiers));
         if (PanelKeyPolicy.shouldClose(keyCode == 256, bindingMatches, inputBox.isFocused(), modifiers)) {
             toggle();
             return true;
@@ -324,14 +324,14 @@ public class SteveGUI {
         }
 
         // Let the widget handle all editing shortcuts, especially Ctrl/Cmd+A/C/V/X.
-        inputBox.keyPressed(keyCode, scanCode, modifiers);
+        inputBox.keyPressed(new net.minecraft.client.input.KeyEvent(keyCode, scanCode, modifiers));
 
         return true; // Consume all keys to prevent game controls
     }
 
     public static boolean handleCharTyped(char codePoint, int modifiers) {
         if (isOpen && inputBox != null) {
-            inputBox.charTyped(codePoint, modifiers);
+            inputBox.charTyped(new net.minecraft.client.input.CharacterEvent(codePoint));
             return true; // Consumed
         }
         return false;
@@ -467,7 +467,6 @@ public class SteveGUI {
 
     public static void tick() {
         if (isOpen && inputBox != null) {
-            inputBox.tick();
             // Auto-focus input box when panel is open
             if (!inputBox.isFocused()) {
                 inputBox.setFocused(true);

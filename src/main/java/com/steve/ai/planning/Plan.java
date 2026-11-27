@@ -281,11 +281,11 @@ public final class Plan {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
-        tag.putUUID("PlanId", planId);
-        if (goalId != null) tag.putUUID("GoalId", goalId);
+        com.steve.ai.util.NbtCompat.putUUID(tag, "PlanId", planId);
+        if (goalId != null) com.steve.ai.util.NbtCompat.putUUID(tag, "GoalId", goalId);
         tag.putString("OriginalCommand", originalCommand);
-        if (requestingPlayer != null) tag.putUUID("RequestingPlayer", requestingPlayer);
-        if (steveUuid != null) tag.putUUID("SteveUuid", steveUuid);
+        if (requestingPlayer != null) com.steve.ai.util.NbtCompat.putUUID(tag, "RequestingPlayer", requestingPlayer);
+        if (steveUuid != null) com.steve.ai.util.NbtCompat.putUUID(tag, "SteveUuid", steveUuid);
         tag.putString("State", state.name());
         tag.putInt("CurrentTaskIndex", Math.max(0, Math.min(currentTaskIndex, steps.size())));
         tag.putInt("AttemptCount", attemptCount);
@@ -327,15 +327,15 @@ public final class Plan {
         if (tag == null || tag.isEmpty()) {
             return new Plan("Restored plan", null, null, 3, 8, 12, 0, 0L);
         }
-        UUID planId = tag.hasUUID("PlanId") ? tag.getUUID("PlanId")
-            : tag.hasUUID("planId") ? tag.getUUID("planId") : UUID.randomUUID();
-        UUID goalId = tag.hasUUID("GoalId") ? tag.getUUID("GoalId") : null;
+        UUID planId = com.steve.ai.util.NbtCompat.hasUUID(tag, "PlanId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "PlanId").orElse(null)
+            : com.steve.ai.util.NbtCompat.hasUUID(tag, "planId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "planId").orElse(null) : UUID.randomUUID();
+        UUID goalId = com.steve.ai.util.NbtCompat.hasUUID(tag, "GoalId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "GoalId").orElse(null) : null;
         String command = tag.contains("OriginalCommand") ? tag.getStringOr("OriginalCommand", "")
             : tag.getStringOr("originalCommand", "");
-        UUID requestingPlayer = tag.hasUUID("RequestingPlayer") ? tag.getUUID("RequestingPlayer")
-            : tag.hasUUID("requestingPlayer") ? tag.getUUID("requestingPlayer") : null;
-        UUID steveUuid = tag.hasUUID("SteveUuid") ? tag.getUUID("SteveUuid")
-            : tag.hasUUID("steveUuid") ? tag.getUUID("steveUuid") : null;
+        UUID requestingPlayer = com.steve.ai.util.NbtCompat.hasUUID(tag, "RequestingPlayer") ? com.steve.ai.util.NbtCompat.getUUID(tag, "RequestingPlayer").orElse(null)
+            : com.steve.ai.util.NbtCompat.hasUUID(tag, "requestingPlayer") ? com.steve.ai.util.NbtCompat.getUUID(tag, "requestingPlayer").orElse(null) : null;
+        UUID steveUuid = com.steve.ai.util.NbtCompat.hasUUID(tag, "SteveUuid") ? com.steve.ai.util.NbtCompat.getUUID(tag, "SteveUuid").orElse(null)
+            : com.steve.ai.util.NbtCompat.hasUUID(tag, "steveUuid") ? com.steve.ai.util.NbtCompat.getUUID(tag, "steveUuid").orElse(null) : null;
         Plan plan = new Plan(planId, goalId, command, requestingPlayer, steveUuid,
             readInt(tag, "MaxRetries", "maxRetries", 3),
             readInt(tag, "MaxReplans", "maxReplans", 8),
@@ -405,7 +405,7 @@ public final class Plan {
 
     private static CompoundTag saveSummary(CompletedStepSummary summary) {
         CompoundTag tag = new CompoundTag();
-        if (summary.getStepId() != null) tag.putUUID("StepId", summary.getStepId());
+        if (summary.getStepId() != null) com.steve.ai.util.NbtCompat.putUUID(tag, "StepId", summary.getStepId());
         tag.putString("Action", summary.getAction());
         tag.putString("Status", summary.getStatus().name());
         tag.putInt("Attempts", summary.getAttempts());
@@ -418,7 +418,7 @@ public final class Plan {
 
     private static CompletedStepSummary loadSummary(CompoundTag tag) {
         return new CompletedStepSummary(
-            tag.hasUUID("StepId") ? tag.getUUID("StepId") : null,
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "StepId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "StepId").orElse(null) : null,
             tag.getStringOr("Action", ""),
             readStepStatus(tag.getStringOr("Status", "")),
             tag.getIntOr("Attempts", 0),
@@ -455,13 +455,13 @@ public final class Plan {
     }
 
     private static int readInt(CompoundTag tag, String current, String legacy, int fallback) {
-        if (tag.contains(current)) return tag.getInt(current);
-        return tag.contains(legacy) ? tag.getInt(legacy) : fallback;
+        if (tag.contains(current)) return tag.getIntOr(current, 0);
+        return tag.contains(legacy) ? tag.getIntOr(legacy, 0) : fallback;
     }
 
     private static long readLong(CompoundTag tag, String current, String legacy, long fallback) {
-        if (tag.contains(current)) return tag.getLong(current);
-        return tag.contains(legacy) ? tag.getLong(legacy) : fallback;
+        if (tag.contains(current)) return tag.getLongOr(current, 0L);
+        return tag.contains(legacy) ? tag.getLongOr(legacy, 0L) : fallback;
     }
 
     private static int increment(int value) {

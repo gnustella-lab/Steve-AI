@@ -144,11 +144,8 @@ public class CraftingPlanner {
     private static net.minecraft.world.item.crafting.RecipeHolder<?> findRecipeForItem(ServerLevel level, String itemName, SteveInventory inventory) {
         var recipeManager = level.getServer().getRecipeManager();
         var recipes = recipeManager.getRecipes();
-        var target = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
-            net.minecraft.resources.Identifier.tryParse(
-                itemName.contains(":") ? itemName : "minecraft:" + itemName
-            )
-        );
+        var target = com.steve.ai.util.ModApi.item(net.minecraft.resources.Identifier.tryParse(
+                itemName.contains(":") ? itemName : "minecraft:" + itemName));
         if (target == null || target == net.minecraft.world.item.Items.AIR) {
             return null;
         }

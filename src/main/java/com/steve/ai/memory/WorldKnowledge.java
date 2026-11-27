@@ -75,7 +75,7 @@ public class WorldKnowledge {
         Level level = steve.level();
         BlockPos pos = steve.blockPosition();
         Biome biome = level.getBiome(pos).value();
-        var biomeRegistry = level.registryAccess().registryOrThrow(Registries.BIOME);
+        var biomeRegistry = level.registryAccess().lookupOrThrow(Registries.BIOME);
         Identifier biomeKey = biomeRegistry.getKey(biome);
         biomeName = biomeKey == null ? "unknown" : bounded(biomeKey.getPath(), 128);
     }

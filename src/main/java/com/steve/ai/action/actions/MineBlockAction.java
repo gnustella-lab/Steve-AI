@@ -170,7 +170,7 @@ public class MineBlockAction extends BaseAction {
                 return;
             }
             
-            steve.swing(InteractionHand.MAIN_HAND, true);
+            steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
 
             if (!steve.breakBlockIntoInventory(currentTarget)) {
                 SteveMod.LOGGER.warn("Minecraft rejected mining at {}", currentTarget);
@@ -256,7 +256,7 @@ public class MineBlockAction extends BaseAction {
                     }
                     SteveMod.LOGGER.info("Steve '{}' placed torch at {} (light level was {})",
                         steve.getSteveName(), torchPos, lightLevel);
-                    steve.swing(InteractionHand.MAIN_HAND, true);
+                    steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
                 }
             }
         }
@@ -311,7 +311,7 @@ public class MineBlockAction extends BaseAction {
                     "Tunnel reached a protected region").requiresReplanning(true).build();
                 return;
             }
-            steve.swing(InteractionHand.MAIN_HAND, true);
+            steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
             if (!steve.breakBlockIntoInventory(centerPos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", centerPos);
                 result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
@@ -333,7 +333,7 @@ public class MineBlockAction extends BaseAction {
                     "Tunnel reached a protected region").requiresReplanning(true).build();
                 return;
             }
-            steve.swing(InteractionHand.MAIN_HAND, true);
+            steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
             if (!steve.breakBlockIntoInventory(abovePos)) {
                 SteveMod.LOGGER.warn("Minecraft rejected tunnel mining at {}", abovePos);
                 result = ActionResult.failure(ActionResult.ERROR_BLOCKED,
@@ -458,7 +458,7 @@ public class MineBlockAction extends BaseAction {
         }
         
         Identifier resourceLocation = Identifier.tryParse(blockName);
-        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+        return resourceLocation != null ? com.steve.ai.util.ModApi.block(resourceLocation) : Blocks.AIR;
     }
 
     private ActionResult searchFailure(String message) {
@@ -487,6 +487,6 @@ public class MineBlockAction extends BaseAction {
 
     private String dimension() {
         return steve.level() instanceof ServerLevel level
-            ? level.dimension().location().toString() : "unknown";
+            ? level.dimension().identifier().toString() : "unknown";
     }
 }

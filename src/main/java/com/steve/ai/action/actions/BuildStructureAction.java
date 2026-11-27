@@ -58,7 +58,7 @@ public class BuildStructureAction extends BaseAction {
         structureType = requestedStructure.toLowerCase();
         currentBlockIndex = 0;
         ticksRunning = 0;
-        String dimensionId = steve.level().dimension().location().toString();
+        String dimensionId = steve.level().dimension().identifier().toString();
         collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
             structureType, dimensionId, steve.blockPosition(), JOIN_RADIUS);
         if (collaborativeBuild != null) {
@@ -240,7 +240,7 @@ public class BuildStructureAction extends BaseAction {
                 
                 steve.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
                 
-                steve.swing(InteractionHand.MAIN_HAND, true);
+                steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
                 
                 BlockState existingState = steve.level().getBlockState(pos);
                 
@@ -317,7 +317,7 @@ public class BuildStructureAction extends BaseAction {
                         15, 0.4, 0.4, 0.4, 0.15
                     );
                     
-                    var soundType = blockState.getSoundType(steve.level(), pos, steve);
+                    var soundType = blockState.getSoundType();
                     steve.level().playSound(null, pos, soundType.getPlaceSound(), 
                         SoundSource.BLOCKS, 1.0f, soundType.getPitch());
                 }
@@ -425,7 +425,7 @@ public class BuildStructureAction extends BaseAction {
             blockName = "minecraft:" + blockName;
         }
         Identifier resourceLocation = Identifier.tryParse(blockName);
-        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+        return resourceLocation != null ? com.steve.ai.util.ModApi.block(resourceLocation) : Blocks.AIR;
     }
     
     /**
@@ -567,7 +567,7 @@ public class BuildStructureAction extends BaseAction {
                 
                 if (!blockState.isAir()) {
                     Block block = blockState.getBlock();
-                    if (block != Blocks.GRASS && block != Blocks.TALL_GRASS && 
+                    if (block != Blocks.SHORT_GRASS && block != Blocks.TALL_GRASS && 
                         block != Blocks.FERN && block != Blocks.DEAD_BUSH &&
                         block != Blocks.DANDELION && block != Blocks.POPPY) {
                         unsuitable++;

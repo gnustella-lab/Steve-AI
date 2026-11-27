@@ -76,7 +76,7 @@ public class DropItemAction extends BaseAction {
         int droppedNow = 0;
         for (ItemStack stack : droppedItems) {
             droppedNow += stack.getCount();
-            steve.spawnAtLocation(stack);
+            steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), stack);
         }
 
         dropped += droppedNow;
@@ -107,6 +107,6 @@ public class DropItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

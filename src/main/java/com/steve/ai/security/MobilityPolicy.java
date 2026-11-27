@@ -40,8 +40,8 @@ public final class MobilityPolicy {
                 || !(steve.level() instanceof ServerLevel level)
                 || level.getServer() == null
                 || !level.getServer().isSameThread()
-                || destination.getY() <= level.getMinBuildHeight()
-                || destination.getY() + 1 >= level.getMaxBuildHeight()
+                || destination.getY() <= level.getMinY()
+                || destination.getY() + 1 >= level.getMaxY()
                 || !level.isLoaded(destination)
                 || PermissionManager.getInstance().isProtected(level, destination)) {
             return false;

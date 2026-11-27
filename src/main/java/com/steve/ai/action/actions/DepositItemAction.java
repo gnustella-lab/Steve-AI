@@ -123,7 +123,7 @@ public class DepositItemAction extends BaseAction {
                 if (!stack.isEmpty()) {
                     undeposited += stack.getCount();
                     ItemStack restoreRemainder = steve.getSteveInventory().insert(stack);
-                    if (!restoreRemainder.isEmpty()) steve.spawnAtLocation(restoreRemainder);
+                    if (!restoreRemainder.isEmpty()) steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), restoreRemainder);
                 }
             }
 
@@ -250,6 +250,6 @@ public class DepositItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

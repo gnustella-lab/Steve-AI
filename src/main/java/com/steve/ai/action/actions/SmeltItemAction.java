@@ -328,7 +328,7 @@ public class SmeltItemAction extends BaseAction {
                 for (int z = -2; z <= 2; z++) {
                     BlockPos pos = stevePos.offset(x, y, z);
                     if (level.getBlockState(pos).isAir()
-                            && level.getBlockState(pos.below()).isSolidRender(level, pos.below())) {
+                            && level.getBlockState(pos.below()).isSolidRender()) {
                         if (PermissionManager.getInstance().isProtected(level, pos)) {
                             continue;
                         }
@@ -400,6 +400,6 @@ public class SmeltItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

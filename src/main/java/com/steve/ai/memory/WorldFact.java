@@ -101,8 +101,8 @@ public final class WorldFact {
         Map<String, String> details = new LinkedHashMap<>();
         if (tag.contains("Details")) {
             CompoundTag detailTag = tag.getCompoundOrEmpty("Details");
-            for (String key : detailTag.getAllKeys()) {
-                details.put(key, detailTag.getString(key));
+            for (String key : detailTag.keySet()) {
+                details.put(key, detailTag.getStringOr(key, ""));
             }
         }
         return new WorldFact(kind, tag.getStringOr("Key", ""), tag.getStringOr("Dimension", ""), position,

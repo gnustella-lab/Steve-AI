@@ -76,7 +76,7 @@ public record GoalConstraints(
         tag.putInt("TargetQuantity", targetQuantity);
         tag.putString("TargetBlock", targetBlock);
         if (targetPlayerUuid != null) {
-            tag.putUUID("TargetPlayer", targetPlayerUuid);
+            com.steve.ai.util.NbtCompat.putUUID(tag, "TargetPlayer", targetPlayerUuid);
         }
         if (targetPosition != null) {
             tag.putInt("TargetX", targetPosition.getX());
@@ -101,7 +101,7 @@ public record GoalConstraints(
             tag.getStringOr("TargetItem", ""),
             tag.getIntOr("TargetQuantity", 0),
             tag.getStringOr("TargetBlock", ""),
-            tag.hasUUID("TargetPlayer") ? tag.getUUID("TargetPlayer") : null,
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "TargetPlayer") ? com.steve.ai.util.NbtCompat.getUUID(tag, "TargetPlayer").orElse(null) : null,
             position,
             tag.contains("PositionTolerance") ? tag.getIntOr("PositionTolerance", 0) : 2,
             !tag.contains("AllowExploration") || tag.getBooleanOr("AllowExploration", false),

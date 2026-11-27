@@ -93,7 +93,7 @@ public class GiveItemAction extends BaseAction {
         }
         int deliveredCount = given.getCount();
         if (!serverPlayer.getInventory().add(given) && !given.isEmpty()) {
-            targetPlayer.drop(given, false);
+            targetPlayer.drop(given, false, net.minecraft.util.Prediction.SERVER_ONLY);
         }
 
         String msg = "Gave " + deliveredCount + " " + itemName
@@ -136,6 +136,6 @@ public class GiveItemAction extends BaseAction {
             name = "minecraft:" + name;
         }
         Identifier rl = Identifier.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

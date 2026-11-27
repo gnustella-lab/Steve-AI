@@ -176,7 +176,7 @@ public class IngredientResolver {
             return "";
         }
         List<ItemStack> items = com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient);
-        if (items.length == 0) {
+        if (items.isEmpty()) {
             return "";
         }
         if (inventory != null) {
@@ -196,7 +196,7 @@ public class IngredientResolver {
                 bestScore = score;
             }
         }
-        return best.isEmpty() ? idOf(items[0]) : best;
+        return best.isEmpty() ? idOf(items.get(0)) : best;
     }
 
     private static int preferenceScore(String id) {

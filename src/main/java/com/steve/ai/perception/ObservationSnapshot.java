@@ -139,10 +139,10 @@ public final class ObservationSnapshot {
             builder.x(pos.getX()).y(pos.getY()).z(pos.getZ());
             
             ResourceKey<Level> dimKey = level.dimension();
-            builder.dimension(dimKey != null ? dimKey.location().toString() : "unknown");
+            builder.dimension(dimKey != null ? dimKey.identifier().toString() : "unknown");
             
-            builder.dayTime(level.getDayTime());
-            builder.isNight(level.isNight());
+            builder.dayTime(level.getOverworldClockTime());
+            builder.isNight((level.getOverworldClockTime() % 24000L >= 13000L && level.getOverworldClockTime() % 24000L < 23000L));
             builder.isRaining(level.isRaining());
             builder.isThundering(level.isThundering());
             builder.lightLevel(level.getMaxLocalRawBrightness(pos));

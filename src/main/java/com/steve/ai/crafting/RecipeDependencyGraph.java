@@ -71,8 +71,7 @@ public class RecipeDependencyGraph {
             try {
                 for (Node node : nodes.values()) {
                     if (node.resultItem() != null) {
-                        net.minecraft.world.item.Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
-                            net.minecraft.resources.Identifier.tryParse(
+                        net.minecraft.world.item.Item item = com.steve.ai.util.ModApi.item(net.minecraft.resources.Identifier.tryParse(
                                 node.resultItem().contains(":") ? node.resultItem() : "minecraft:" + node.resultItem()
                             ));
                         if (item != null && item != net.minecraft.world.item.Items.AIR

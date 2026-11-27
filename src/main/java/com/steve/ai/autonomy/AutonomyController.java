@@ -208,7 +208,7 @@ public final class AutonomyController {
         var sequence = localGoalPlanner.parseSequence(description, item -> {
             var id = net.minecraft.resources.Identifier.tryParse(item);
             return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
-                && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id) != net.minecraft.world.item.Items.AIR;
+                && com.steve.ai.util.ModApi.item(id) != net.minecraft.world.item.Items.AIR;
         });
         if (sequence.isPresent() && sequence.get().size() == 2
                 && sequence.get().stream().noneMatch(LocalGoalPlanner.Request::isBuild)) {
@@ -537,7 +537,7 @@ public final class AutonomyController {
         return localGoalPlanner.parse(description, item -> {
             var id = net.minecraft.resources.Identifier.tryParse(item);
             return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
-                && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id)
+                && com.steve.ai.util.ModApi.item(id)
                     != net.minecraft.world.item.Items.AIR;
         });
     }
@@ -556,7 +556,7 @@ public final class AutonomyController {
     private int countItem(String item) {
         var id = net.minecraft.resources.Identifier.tryParse(normalizeItemId(item));
         if (id == null) return 0;
-        return steve.getSteveInventory().count(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id));
+        return steve.getSteveInventory().count(com.steve.ai.util.ModApi.item(id));
     }
 
     private void handlePlanningResult(ResponseParser.ParsedResponse response, long now) {
@@ -825,11 +825,11 @@ public final class AutonomyController {
             net.minecraft.resources.Identifier.tryParse(normalized);
         if (target == null) return description;
         net.minecraft.world.item.Item targetItem =
-            net.minecraft.core.registries.BuiltInRegistries.ITEM.get(target);
+            com.steve.ai.util.ModApi.item(target);
         if (targetItem == net.minecraft.world.item.Items.AIR) return description;
         boolean craftable = level.getServer().getRecipeManager().getRecipes().stream()
-            .anyMatch(recipe -> recipe.getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
-                && com.steve.ai.crafting.ModernRecipes.resultOf(recipe).is(targetItem));
+            .anyMatch(recipe -> recipe.value().getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
+                && com.steve.ai.crafting.ModernRecipes.resultOf(recipe.value()).is(targetItem));
         return craftable ? "Craft " + constraints.targetQuantity() + " " + item : description;
     }
 
@@ -950,7 +950,7 @@ public final class AutonomyController {
 
     private String dimension() {
         return steve.level() instanceof ServerLevel level
-            ? level.dimension().location().toString() : "unknown";
+            ? level.dimension().identifier().toString() : "unknown";
     }
 
     private static String formatResult(ActionResult result) {

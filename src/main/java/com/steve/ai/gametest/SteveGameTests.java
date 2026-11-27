@@ -66,10 +66,10 @@ public final class SteveGameTests {
         original.getSteveInventory().setMainHandItem(new ItemStack(Items.IRON_PICKAXE));
         original.syncEquipmentFromInventory();
         CompoundTag entityTag = new CompoundTag();
-        original.saveWithoutId(entityTag);
+        entityTag = com.steve.ai.util.NbtCompat.saveEntity(original);
 
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(entityTag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, entityTag);
 
         helper.assertTrue(restored.getSteveInventory().count(Items.OAK_LOG) == 32,
             "Inventory stack was not restored from entity NBT");
@@ -86,28 +86,27 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void damageAndTransientInvulnerabilityFollowRuntimePolicy(GameTestHelper helper) {
         SteveEntity normal = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        normal.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        normal.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(normal);
         float normalHealth = normal.getHealth();
-        boolean damaged = normal.hurt(helper.getLevel().damageSources().generic(), 4.0F);
-        helper.assertTrue(damaged && normal.getHealth() < normalHealth,
+        normal.hurt(helper.getLevel().damageSources().generic(), 4.0F);
+        helper.assertTrue(normal.getHealth() < normalHealth,
             "Steve must receive ordinary survival damage");
 
         SteveEntity transientlyProtected = new SteveEntity(
             SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        transientlyProtected.moveTo(helper.absolutePos(new BlockPos(2, 2, 1)), 0.0F, 0.0F);
+        transientlyProtected.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(2, 2, 1))));
         helper.getLevel().addFreshEntity(transientlyProtected);
         transientlyProtected.setInvulnerableBuilding(true);
         float protectedHealth = transientlyProtected.getHealth();
-        helper.assertTrue(!transientlyProtected.hurt(
-                helper.getLevel().damageSources().generic(), 4.0F)
-                && transientlyProtected.getHealth() == protectedHealth,
+        transientlyProtected.hurt(helper.getLevel().damageSources().generic(), 4.0F);
+        helper.assertTrue(transientlyProtected.getHealth() == protectedHealth,
             "Authorized transient invulnerability must block ordinary damage");
         transientlyProtected.setInvulnerableBuilding(false);
         transientlyProtected.clearInvulnerableTime();
-        helper.assertTrue(transientlyProtected.hurt(
-                helper.getLevel().damageSources().generic(), 4.0F)
-                && transientlyProtected.getHealth() < protectedHealth,
+        transientlyProtected.clearInvulnerableTime();
+        transientlyProtected.hurt(helper.getLevel().damageSources().generic(), 4.0F);
+        helper.assertTrue(transientlyProtected.getHealth() < protectedHealth,
             "Disabling transient invulnerability must restore damage");
         helper.succeed();
     }
@@ -118,10 +117,10 @@ public final class SteveGameTests {
         original.setInvulnerableBuilding(true);
         original.setPermanentlyInvulnerable(true); // Simulate a save produced by the old implementation.
         CompoundTag entityTag = new CompoundTag();
-        original.saveWithoutId(entityTag);
+        entityTag = com.steve.ai.util.NbtCompat.saveEntity(original);
 
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(entityTag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, entityTag);
 
         helper.assertTrue(!restored.isBuildingInvulnerable(),
             "Transient build invulnerability must not be restored from NBT");
@@ -133,7 +132,7 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatWithoutTargetFailsInsteadOfReportingSuccess(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
         CombatAction combat = new CombatAction(steve,
             new Task("combat", Map.of("target", "creeper")));
@@ -155,11 +154,11 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatSucceedsOnlyAfterObservedDefeat(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
-        Zombie zombie = EntityType.ZOMBIE.create(helper.getLevel());
+        Zombie zombie = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(helper.getLevel(), net.minecraft.world.entity.EntitySpawnReason.NATURAL);
         helper.assertTrue(zombie != null, "Could not create combat target");
-        zombie.moveTo(helper.absolutePos(new BlockPos(2, 2, 1)), 0.0F, 0.0F);
+        zombie.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(2, 2, 1))));
         zombie.setHealth(1.0F);
         helper.getLevel().addFreshEntity(zombie);
 
@@ -179,11 +178,11 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatTargetRemovedBeforeEngagementIsEntityGone(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
-        Zombie zombie = EntityType.ZOMBIE.create(helper.getLevel());
+        Zombie zombie = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(helper.getLevel(), net.minecraft.world.entity.EntitySpawnReason.NATURAL);
         helper.assertTrue(zombie != null, "Could not create combat target");
-        zombie.moveTo(helper.absolutePos(new BlockPos(2, 2, 1)), 0.0F, 0.0F);
+        zombie.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(2, 2, 1))));
         helper.getLevel().addFreshEntity(zombie);
 
         CombatAction combat = new CombatAction(steve,
@@ -200,11 +199,11 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatPartialEngagementTimesOutWithoutFalseSuccess(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
-        Zombie zombie = EntityType.ZOMBIE.create(helper.getLevel());
+        Zombie zombie = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(helper.getLevel(), net.minecraft.world.entity.EntitySpawnReason.NATURAL);
         helper.assertTrue(zombie != null, "Could not create combat target");
-        zombie.moveTo(helper.absolutePos(new BlockPos(2, 2, 1)), 0.0F, 0.0F);
+        zombie.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(2, 2, 1))));
         zombie.setHealth(zombie.getMaxHealth());
         helper.getLevel().addFreshEntity(zombie);
 
@@ -229,7 +228,7 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatCancellationRestoresTransientState(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
         CombatAction combat = new CombatAction(steve,
             new Task("combat", Map.of("target", "zombie")));
@@ -249,7 +248,7 @@ public final class SteveGameTests {
     public static void buildCancellationRestoresTransientState(GameTestHelper helper) {
         CollaborativeBuildManager.clearAllBuilds();
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
         BuildStructureAction build = new BuildStructureAction(steve,
             new Task("build", Map.of("structure", "house", "width", 3, "height", 3, "depth", 3)));
@@ -268,7 +267,7 @@ public final class SteveGameTests {
         BlockPos destination = null;
         try {
             SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-            steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+            steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
             helper.getLevel().addFreshEntity(steve);
 
             // Capabilities alone never override the global fail-closed configuration.
@@ -306,10 +305,10 @@ public final class SteveGameTests {
         original.getAccessProfile().grantCapability(AgentCapability.ALLOW_FLIGHT);
         original.setNoGravity(true); // Simulate a transient/legacy flight state in the entity NBT.
         CompoundTag tag = new CompoundTag();
-        original.saveWithoutId(tag);
+        tag = com.steve.ai.util.NbtCompat.saveEntity(original);
 
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(tag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, tag);
         helper.assertTrue(restored.getAccessProfile().hasCapability(AgentCapability.ALLOW_FLIGHT),
             "Persistent capability should survive reload");
         helper.assertTrue(!restored.isFlying() && !restored.isNoGravity(),
@@ -326,10 +325,10 @@ public final class SteveGameTests {
             "block", "stone", "x", 10, "y", 64, "z", 10))), "checkpoint", "runtime", 3L);
         original.getMemory().setActivePlan(plan);
         CompoundTag tag = new CompoundTag();
-        original.saveWithoutId(tag);
+        tag = com.steve.ai.util.NbtCompat.saveEntity(original);
 
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(tag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, tag);
         helper.assertTrue(restored.getMemory().getActivePlan() != null,
             "Test precondition: plan checkpoint should deserialize for diagnostics");
         restored.getAutonomyController().tick();
@@ -366,7 +365,7 @@ public final class SteveGameTests {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1Miner");
         steve.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_PICKAXE));
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
 
@@ -384,7 +383,7 @@ public final class SteveGameTests {
         BlockPos remoteRelative = new BlockPos(8, 1, 1);
         helper.setBlock(remoteRelative, Blocks.STONE);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 1, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 1, 1))));
         helper.getLevel().addFreshEntity(steve);
 
         boolean broken = steve.breakBlockIntoInventory(helper.absolutePos(remoteRelative));
@@ -399,7 +398,7 @@ public final class SteveGameTests {
         BlockPos relativePosition = new BlockPos(1, 1, 1);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1Collector");
-        steve.moveTo(helper.absolutePos(relativePosition), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(relativePosition)));
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
         ItemEntity itemEntity = helper.spawnItem(Items.BREAD, relativePosition);
@@ -416,7 +415,7 @@ public final class SteveGameTests {
     public static void removingSteveDropsInventoryExactlyOnce(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1Removal");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.getSteveInventory().insert(new ItemStack(Items.BREAD, 3));
         helper.getLevel().addFreshEntity(steve);
         SteveManager manager = new SteveManager();
@@ -437,7 +436,7 @@ public final class SteveGameTests {
     public static void cancelledMiningRestoresPreviousMainHandItem(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1ToolRestore");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.getSteveInventory().insert(new ItemStack(Items.IRON_PICKAXE));
         steve.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND_SWORD));
         steve.syncEquipmentToInventory();
@@ -463,7 +462,7 @@ public final class SteveGameTests {
         helper.setBlock(relative, Blocks.AIR.defaultBlockState());
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2Placer");
-        steve.moveTo(helper.absolutePos(relative).above(), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(relative).above()));
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 3));
         helper.getLevel().addFreshEntity(steve);
@@ -493,7 +492,7 @@ public final class SteveGameTests {
         helper.setBlock(slot, Blocks.AIR.defaultBlockState());
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2BoundedPlacer");
-        steve.moveTo(helper.absolutePos(slot.above()), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(slot.above())));
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.COBBLESTONE, 1));
         helper.getLevel().addFreshEntity(steve);
@@ -536,7 +535,7 @@ public final class SteveGameTests {
     public static void craftingConsumesIngredientsAndProducesResult(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2Crafter");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
 
@@ -577,7 +576,7 @@ public final class SteveGameTests {
 
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2Smelter");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.RAW_IRON, 2));
         helper.getLevel().addFreshEntity(steve);
@@ -610,7 +609,7 @@ public final class SteveGameTests {
         }
         furnace.setItem(2, new ItemStack(Items.DIAMOND));
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.getSteveInventory().insert(new ItemStack(Items.RAW_IRON));
         steve.getSteveInventory().insert(new ItemStack(Items.COAL));
         helper.getLevel().addFreshEntity(steve);
@@ -635,7 +634,7 @@ public final class SteveGameTests {
         helper.setBlock(new BlockPos(1, 1, 1), Blocks.CHEST);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2Depositor");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.IRON_INGOT, 8));
         helper.getLevel().addFreshEntity(steve);
@@ -673,7 +672,7 @@ public final class SteveGameTests {
         helper.setBlock(stone, Blocks.STONE);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2ToolWear");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         ItemStack pickaxe = new ItemStack(Items.IRON_PICKAXE);
         int initialDamage = pickaxe.getDamageValue();
@@ -695,7 +694,7 @@ public final class SteveGameTests {
     public static void pausingWhilePlanningDiscardsLateResponse(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("AutonomyPause_" + UUID.randomUUID().toString().substring(0, 8));
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
 
@@ -734,7 +733,7 @@ public final class SteveGameTests {
 
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("AutonomousIron_" + UUID.randomUUID().toString().substring(0, 8));
-        steve.moveTo(furnacePos.above(), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(furnacePos.above()));
         steve.setPersistenceRequired();
         steve.getSteveInventory().insert(new ItemStack(Items.IRON_INGOT, 15));
         steve.getSteveInventory().insert(new ItemStack(Items.RAW_IRON, 1));
@@ -769,7 +768,7 @@ public final class SteveGameTests {
         BlockPos target = helper.absolutePos(relative);
         PermissionManager.getInstance().protectRegion(helper.getLevel(), target, target);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
         helper.assertTrue(!steve.breakBlockIntoInventory(target),
             "Protected mining must fail closed");
@@ -787,7 +786,7 @@ public final class SteveGameTests {
         BlockPos target = helper.absolutePos(relative);
         PermissionManager.getInstance().protectRegion(helper.getLevel(), target, target);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(target.above(), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(target.above()));
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 2));
         helper.getLevel().addFreshEntity(steve);
         var place = new com.steve.ai.action.actions.PlaceBlockAction(steve,
@@ -813,7 +812,7 @@ public final class SteveGameTests {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         ItemStack filler = new ItemStack(Items.DIRT, 64);
         while (steve.getSteveInventory().canInsert(filler.copy())) {
             steve.getSteveInventory().insert(filler.copy());
@@ -838,7 +837,7 @@ public final class SteveGameTests {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_PICKAXE));
         helper.getLevel().addFreshEntity(steve);
 
@@ -856,7 +855,7 @@ public final class SteveGameTests {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         ItemStack pickaxe = new ItemStack(Items.WOODEN_PICKAXE);
         pickaxe.setDamageValue(pickaxe.getMaxDamage() - 1);
         steve.setItemInHand(InteractionHand.MAIN_HAND, pickaxe);
@@ -878,7 +877,7 @@ public final class SteveGameTests {
         helper.setBlock(relative, Blocks.AIR.defaultBlockState());
         BlockPos target = helper.absolutePos(relative);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_PLANKS, 1));
         helper.getLevel().addFreshEntity(steve);
 
@@ -910,7 +909,7 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 80)
     public static void pausedGoalRemainsPausedAfterReload(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        original.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        original.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(original);
         AutonomyController controller = original.getAutonomyController();
         controller.setPlanner(context -> new CompletableFuture<>());
@@ -918,9 +917,9 @@ public final class SteveGameTests {
         controller.pause();
 
         CompoundTag tag = new CompoundTag();
-        original.saveWithoutId(tag);
+        tag = com.steve.ai.util.NbtCompat.saveEntity(original);
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(tag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, tag);
         restored.getAutonomyController().tick();
 
         helper.assertTrue(restored.getAutonomyController().getState() == com.steve.ai.execution.AgentState.PAUSED,
@@ -937,10 +936,10 @@ public final class SteveGameTests {
         blocked.block("protected", 2L);
         original.getMemory().setActiveGoal(blocked);
         CompoundTag tag = new CompoundTag();
-        original.saveWithoutId(tag);
+        tag = com.steve.ai.util.NbtCompat.saveEntity(original);
 
         SteveEntity restored = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        restored.load(tag);
+        com.steve.ai.util.NbtCompat.loadEntity(restored, tag);
         restored.getAutonomyController().tick();
 
         helper.assertTrue(restored.getAutonomyController().getActiveGoal() == null,
@@ -953,7 +952,7 @@ public final class SteveGameTests {
     @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 80)
     public static void stopIsAbsoluteAndDoesNotResume(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         helper.getLevel().addFreshEntity(steve);
         AutonomyController controller = steve.getAutonomyController();
         controller.setPlanner(context -> new CompletableFuture<>());
@@ -974,7 +973,7 @@ public final class SteveGameTests {
         helper.setBlock(relative, Blocks.STONE);
         BlockPos target = helper.absolutePos(relative);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
-        steve.moveTo(target.above(), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(target.above()));
         helper.getLevel().addFreshEntity(steve);
 
         AutonomyController controller = steve.getAutonomyController();
@@ -1005,7 +1004,7 @@ public final class SteveGameTests {
 
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("AutonomyRecovery_" + UUID.randomUUID().toString().substring(0, 8));
-        steve.moveTo(helper.absolutePos(relativeSafeFloor.above()), 0.0F, 0.0F);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(relativeSafeFloor.above())));
         steve.setPersistenceRequired();
         helper.getLevel().addFreshEntity(steve);
 

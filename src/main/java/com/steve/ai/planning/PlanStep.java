@@ -156,7 +156,7 @@ public final class PlanStep {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
-        tag.putUUID("StepId", stepId);
+        com.steve.ai.util.NbtCompat.putUUID(tag, "StepId", stepId);
         tag.putString("Action", bounded(task.getAction(), MAX_ACTION_LENGTH));
         tag.putString("Parameters", boundedJson(GSON.toJson(task.getParameters()), MAX_PARAMETERS_JSON_LENGTH));
         tag.putString("Status", status.name());
@@ -189,7 +189,7 @@ public final class PlanStep {
             }
         }
         return new PlanStep(
-            tag.hasUUID("StepId") ? tag.getUUID("StepId") : UUID.randomUUID(),
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "StepId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "StepId").orElse(null) : UUID.randomUUID(),
             new Task(action, parameters),
             status,
             tag.getIntOr("Attempts", 0),
