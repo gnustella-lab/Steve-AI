@@ -22,13 +22,16 @@ public final class TestBootstrap {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
         try {
-            for (DataComponentInitializers.PendingComponents<?> pending
-                    : BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(
-                        RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY))) {
-                pending.apply();
+            var pending = BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(
+                RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY));
+            int count = 0;
+            for (DataComponentInitializers.PendingComponents<?> component : pending) {
+                component.apply();
+                count++;
             }
-        } catch (RuntimeException ignored) {
-            // Fall back to empty component maps below if initializers are unavailable.
+            System.out.println("[SteveAI tests] applied component initializer groups: " + count);
+        } catch (RuntimeException e) {
+            System.out.println("[SteveAI tests] component initializer build failed: " + e);
         }
         for (Holder.Reference<Item> reference : BuiltInRegistries.ITEM.listElements().toList()) {
             if (!reference.areComponentsBound()) {
