@@ -28,21 +28,21 @@ minecraft {
         }
 
         register('client') {
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.logging.console.level', 'debug'
         }
 
         register('server') {
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'info'
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.logging.console.level', 'info'
             args '--nogui'
             jvmArgs '-Xmx1280M', '-Xms512M'
         }
 
         register('gameTestServer') {
             workingDir = layout.projectDirectory.dir('run-gametest')
-            property 'forge.enabledGameTestNamespaces', (project.findProperty('gameTestNamespaces') ?: 'steve').toString()
-            property 'forge.logging.console.level', 'info'
+            systemProperty 'forge.enabledGameTestNamespaces', (project.findProperty('gameTestNamespaces') ?: 'steve').toString()
+            systemProperty 'forge.logging.console.level', 'info'
         }
     }
 }
