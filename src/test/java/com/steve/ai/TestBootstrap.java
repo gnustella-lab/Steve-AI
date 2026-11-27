@@ -16,7 +16,8 @@ public final class TestBootstrap {
     }
 
     public static void bootstrap() {
-        com.steve.ai.TestBootstrap.bootstrap();
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
         for (Holder.Reference<Item> reference : BuiltInRegistries.ITEM.listElements().toList()) {
             if (!reference.areComponentsBound()) {
                 reference.bindComponents(reference.value().components());
