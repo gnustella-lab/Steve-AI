@@ -2,6 +2,8 @@ package com.steve.ai;
 
 import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponentInitializers;
@@ -21,6 +23,20 @@ public final class TestBootstrap {
     public static void bootstrap() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        // Unit tests have no data packs: bind every built-in tag to empty first so
+        // component initializers can resolve tag references.
+        for (Registry<?> registry : BuiltInRegistries.REGISTRY) {
+            if (registry instanceof MappedRegistry<?> mapped) {
+                mapped.bindAllTagsToEmpty();
+            } else {
+                // Forge's registry wrapper is package-private; invoke its public hook reflectively.
+                try {
+                    registry.getClass().getMethod("bindAllTagsToEmpty").invoke(registry);
+                } catch (ReflectiveOperationException ignored) {
+                    // Not a bindable registry.
+                }
+            }
+        }
         try {
             var pending = BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(
                 RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY));
