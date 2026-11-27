@@ -15,7 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -423,7 +423,7 @@ public class BuildStructureAction extends BaseAction {
         if (!blockName.contains(":")) {
             blockName = "minecraft:" + blockName;
         }
-        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
+        Identifier resourceLocation = Identifier.tryParse(blockName);
         return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
     }
     

@@ -206,7 +206,7 @@ public final class AutonomyController {
             GoalPriority.USER_INTERRUPT,
             null, now, configuredGoalBudget());
         var sequence = localGoalPlanner.parseSequence(description, item -> {
-            var id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            var id = net.minecraft.resources.Identifier.tryParse(item);
             return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
                 && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id) != net.minecraft.world.item.Items.AIR;
         });
@@ -535,7 +535,7 @@ public final class AutonomyController {
 
     private java.util.Optional<LocalGoalPlanner.Request> parseLocalRequest(String description) {
         return localGoalPlanner.parse(description, item -> {
-            var id = net.minecraft.resources.ResourceLocation.tryParse(item);
+            var id = net.minecraft.resources.Identifier.tryParse(item);
             return id != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(id)
                 && net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id)
                     != net.minecraft.world.item.Items.AIR;
@@ -554,7 +554,7 @@ public final class AutonomyController {
     }
 
     private int countItem(String item) {
-        var id = net.minecraft.resources.ResourceLocation.tryParse(normalizeItemId(item));
+        var id = net.minecraft.resources.Identifier.tryParse(normalizeItemId(item));
         if (id == null) return 0;
         return steve.getSteveInventory().count(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id));
     }
@@ -821,8 +821,8 @@ public final class AutonomyController {
         String item = constraints.targetItem();
         if (item.isBlank() || level.getServer() == null) return description;
         String normalized = item.contains(":") ? item : "minecraft:" + item;
-        net.minecraft.resources.ResourceLocation target =
-            net.minecraft.resources.ResourceLocation.tryParse(normalized);
+        net.minecraft.resources.Identifier target =
+            net.minecraft.resources.Identifier.tryParse(normalized);
         if (target == null) return description;
         net.minecraft.world.item.Item targetItem =
             net.minecraft.core.registries.BuiltInRegistries.ITEM.get(target);

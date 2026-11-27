@@ -16,13 +16,10 @@ import com.steve.ai.plugin.PluginManager;
 import com.steve.ai.security.PermissionManager;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.eventbus.api.bus.BusGroup;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -37,14 +34,14 @@ public class SteveMod {
     public static final String MODID = "steve";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public static final DeferredRegister<EntityType<?>> ENTITIES = 
+    public static final DeferredRegister<EntityType<?>> ENTITIES =
         DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, MODID);
 
     public static final RegistryObject<EntityType<SteveEntity>> STEVE_ENTITY = ENTITIES.register("steve",
         () -> EntityType.Builder.of(SteveEntity::new, MobCategory.CREATURE)
             .sized(0.6F, 1.8F)
             .clientTrackingRange(10)
-            .build("steve"));
+            .build(ENTITIES.key("steve")));
 
     private static SteveManager steveManager;
 
@@ -57,18 +54,18 @@ public class SteveMod {
     /** Shared dependency container used by plugins and every action context. */
     private static volatile SimpleServiceContainer serviceContainer;
 
-    public SteveMod() {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+    public SteveMod(FMLJavaModLoadingContext context) {
+        BusGroup modBusGroup = context.getModBusGroup();
 
-        ENTITIES.register(modEventBus);
+        ENTITIES.register(modBusGroup);
 
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, SteveConfig.SPEC);
+        context.registerConfig(ModConfig.Type.COMMON, SteveConfig.SPEC);
 
-        modEventBus.addListener(this::commonSetup);
-        modEventBus.addListener(this::entityAttributes);
+        FMLCommonSetupEvent.getBus(modBusGroup).addListener(this::commonSetup);
+        EntityAttributeCreationEvent.BUS.addListener(this::entityAttributes);
+        RegisterCommandsEvent.BUS.addListener(this::onCommandRegister);
+        ServerStoppedEvent.BUS.addListener(this::onServerStopped);
 
-        MinecraftForge.EVENT_BUS.register(this);
-        
         steveManager = new SteveManager();
     }
 
@@ -86,13 +83,11 @@ public class SteveMod {
         event.put(STEVE_ENTITY.get(), SteveEntity.createAttributes().build());
     }
 
-    @SubscribeEvent
-    public void onCommandRegister(RegisterCommandsEvent event) {
+    private void onCommandRegister(RegisterCommandsEvent event) {
         SteveCommands.register(event.getDispatcher());
     }
 
-    @SubscribeEvent
-    public void onServerStopped(ServerStoppedEvent event) {
+    private void onServerStopped(ServerStoppedEvent event) {
         // Os mundos já foram descarregados, portanto limpamos somente estado global em memória.
         steveManager.clearTracking();
         StructureRegistry.clear();
@@ -121,4 +116,3 @@ public class SteveMod {
         return serviceContainer;
     }
 }
-

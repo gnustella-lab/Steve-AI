@@ -4,7 +4,7 @@ import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -76,7 +76,7 @@ public class WorldKnowledge {
         BlockPos pos = steve.blockPosition();
         Biome biome = level.getBiome(pos).value();
         var biomeRegistry = level.registryAccess().registryOrThrow(Registries.BIOME);
-        ResourceLocation biomeKey = biomeRegistry.getKey(biome);
+        Identifier biomeKey = biomeRegistry.getKey(biome);
         biomeName = biomeKey == null ? "unknown" : bounded(biomeKey.getPath(), 128);
     }
 
@@ -336,7 +336,7 @@ public class WorldKnowledge {
     }
 
     private static String blockName(Block block) {
-        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+        Identifier id = BuiltInRegistries.BLOCK.getKey(block);
         return id == null ? "unknown" : id.getPath();
     }
 

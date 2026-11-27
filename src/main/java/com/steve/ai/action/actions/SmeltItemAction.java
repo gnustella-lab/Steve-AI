@@ -7,7 +7,7 @@ import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -375,7 +375,7 @@ public class SmeltItemAction extends BaseAction {
         for (AbstractCookingRecipe candidate : smelting) {
             try {
                 ItemStack candidateResult = candidate.getResultItem(level.registryAccess());
-                if (!candidateResult.isEmpty() && ItemStack.isSameItemSameTags(candidateResult, expected)) {
+                if (!candidateResult.isEmpty() && ItemStack.isSameItemSameComponents(candidateResult, expected)) {
                     return candidate;
                 }
             } catch (Throwable ignored) {
@@ -391,7 +391,7 @@ public class SmeltItemAction extends BaseAction {
         if (recipe == null || recipe.getIngredients().isEmpty()) return "smelting_input";
         ItemStack[] items = recipe.getIngredients().get(0).getItems();
         if (items.length == 0) return "smelting_input";
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        Identifier id = BuiltInRegistries.ITEM.getKey(items[0].getItem());
         return id == null ? "smelting_input" : id.toString();
     }
 
@@ -401,7 +401,7 @@ public class SmeltItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
+        Identifier rl = Identifier.tryParse(name);
         return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
     }
 }

@@ -2,7 +2,7 @@ package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -145,7 +145,7 @@ public class CraftingPlanner {
         var recipeManager = level.getServer().getRecipeManager();
         var recipes = recipeManager.getRecipes();
         var target = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
-            net.minecraft.resources.ResourceLocation.tryParse(
+            net.minecraft.resources.Identifier.tryParse(
                 itemName.contains(":") ? itemName : "minecraft:" + itemName
             )
         );
@@ -205,7 +205,7 @@ public class CraftingPlanner {
                 if (stack.isEmpty()) {
                     continue;
                 }
-                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 String id = key == null ? "" : key.toString();
                 if (id.equals("minecraft:oak_planks") || id.equals("minecraft:oak_log")
                         || id.equals("minecraft:stick")) {
@@ -275,7 +275,7 @@ public class CraftingPlanner {
         if (ingredient == null || ingredient.isEmpty()) return "unknown";
         ItemStack[] items = ingredient.getItems();
         if (items.length == 0) return "unknown";
-        ResourceLocation key = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        Identifier key = BuiltInRegistries.ITEM.getKey(items[0].getItem());
         return key == null ? "unknown" : key.toString();
     }
 
@@ -412,7 +412,7 @@ public class CraftingPlanner {
             for (ItemStack stack : stacks) {
                 if (remaining <= 0) break;
                 if (stack.isEmpty()) continue;
-                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 String id = key == null ? "" : key.toString();
                 if (!id.endsWith("_planks")) continue;
                 int taken = Math.min(stack.getCount(), remaining);

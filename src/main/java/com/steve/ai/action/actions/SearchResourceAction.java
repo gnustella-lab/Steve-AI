@@ -7,7 +7,7 @@ import com.steve.ai.memory.WorldFact;
 import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -139,7 +139,7 @@ public final class SearchResourceAction extends BaseAction {
             default -> normalized;
         };
         if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
-        ResourceLocation id = ResourceLocation.tryParse(normalized);
+        Identifier id = Identifier.tryParse(normalized);
         return id == null ? Blocks.AIR : BuiltInRegistries.BLOCK.get(id);
     }
 

@@ -5,7 +5,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
@@ -93,7 +93,7 @@ public class DepositItemAction extends BaseAction {
                 boolean added = false;
                 for (int slot = 0; slot < container.getContainerSize(); slot++) {
                     ItemStack existing = container.getItem(slot);
-                    if (!existing.isEmpty() && ItemStack.isSameItemSameTags(existing, stack)) {
+                    if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(existing, stack)) {
                         int limit = Math.min(existing.getMaxStackSize(), stack.getMaxStackSize());
                         int canAdd = limit - existing.getCount();
                         if (canAdd > 0) {
@@ -163,7 +163,7 @@ public class DepositItemAction extends BaseAction {
             boolean added = false;
             for (int slot = 0; slot < container.getContainerSize(); slot++) {
                 ItemStack existing = container.getItem(slot);
-                if (!existing.isEmpty() && ItemStack.isSameItemSameTags(existing, stack)) {
+                if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(existing, stack)) {
                     int limit = Math.min(existing.getMaxStackSize(), stack.getMaxStackSize());
                     int canAdd = limit - existing.getCount();
                     if (canAdd > 0) {
@@ -249,7 +249,7 @@ public class DepositItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
+        Identifier rl = Identifier.tryParse(name);
         return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
     }
 }

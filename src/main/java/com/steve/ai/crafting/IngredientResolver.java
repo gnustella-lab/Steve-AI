@@ -2,7 +2,7 @@ package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -220,7 +220,7 @@ public class IngredientResolver {
         if (stack == null || stack.isEmpty()) {
             return "";
         }
-        ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return key == null ? "" : key.toString();
     }
 }

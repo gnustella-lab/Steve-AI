@@ -11,7 +11,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -457,7 +457,7 @@ public class MineBlockAction extends BaseAction {
             blockName = "minecraft:" + blockName;
         }
         
-        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
+        Identifier resourceLocation = Identifier.tryParse(blockName);
         return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
     }
 

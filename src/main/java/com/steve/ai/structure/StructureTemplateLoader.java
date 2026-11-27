@@ -5,7 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtUtils;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -89,7 +89,7 @@ public class StructureTemplateLoader {
         }
         
         try {
-            ResourceLocation resourceLocation = new ResourceLocation("steve", structureName);
+            Identifier resourceLocation = Identifier.fromNamespaceAndPath("steve", structureName);
             var templateManager = level.getStructureManager();
             var template = templateManager.get(resourceLocation);
             

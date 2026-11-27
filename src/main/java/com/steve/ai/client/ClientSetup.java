@@ -2,14 +2,13 @@ package com.steve.ai.client;
 
 import com.steve.ai.SteveMod;
 import com.steve.ai.entity.SteveEntity;
-import net.minecraft.client.model.PlayerModel;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
@@ -19,11 +18,11 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 @Mod.EventBusSubscriber(modid = SteveMod.MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public class ClientSetup {
 
-    private static final ResourceLocation STEVE_TEXTURE = new ResourceLocation("minecraft", "textures/entity/player/wide/steve.png");
+    private static final Identifier STEVE_TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/entity/player/wide/steve.png");
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> MinecraftForge.EVENT_BUS.register(SteveGUI.class));
+        event.enqueueWork(SteveGUI::registerOverlay);
     }
 
     @SubscribeEvent
@@ -35,7 +34,7 @@ public class ClientSetup {
                 0.5F
             ) {
                 @Override
-                public ResourceLocation getTextureLocation(SteveEntity entity) {
+                public Identifier getTextureLocation(SteveEntity entity) {
                     return STEVE_TEXTURE;
                 }
             }

@@ -24,8 +24,8 @@ The agents aren't following predefined scripts. They're operating off natural la
 ## Quick Start
 
 **You need:**
-- Minecraft 1.20.1 with Forge
-- Java 17
+- Minecraft 26.3 (Wilderness Bound) with Forge 66.1.9
+- Java 25
 - An OpenAI API key (or Groq/Gemini if you prefer)
 
 **Installation:**
@@ -170,19 +170,12 @@ Custom overlay GUI activated with K key. Uses Minecraft's Screen class with cust
 
 ## Building from Source
 
-Use Java 17 with a local Gradle 8.x installation. ForgeGradle 6 does not support Gradle 9+, so `gradle build` fails when your installed Gradle is too new. Gradle 8.4 is the known-good version for this project:
+Use Java 25 with the committed Gradle 9.7.1 wrapper (ForgeGradle 7 requires Gradle 9.3+). CI on GitHub compiles and tests every push and pull request with the same toolchain:
 
 ```bash
 git clone https://github.com/gnustella-lab/Steve-AI.git
 cd Steve-AI
-JAVA_HOME=/path/to/jdk17 gradle build
-```
-
-If your default `gradle` is 9.x or newer, install/select Gradle 8.4 before building, or regenerate the wrapper JAR locally (do not commit it in this fork):
-
-```bash
-gradle wrapper --gradle-version 8.4
-JAVA_HOME=/path/to/jdk17 ./gradlew build
+JAVA_HOME=/path/to/jdk25 ./gradlew build
 ```
 
 Install `build/libs/steve-ai-mod-<version>.jar`, which includes all required runtime libraries. The

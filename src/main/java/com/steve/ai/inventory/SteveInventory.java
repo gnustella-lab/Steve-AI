@@ -1,15 +1,26 @@
 package com.steve.ai.inventory;
 
+import com.mojang.serialization.DataResult;
+import net.minecraft.core.Holder;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Tier;
-import net.minecraft.world.item.TieredItem;
+import net.minecraft.world.item.component.Tool;
+import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.ValueInput;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,7 +78,7 @@ public final class SteveInventory {
             if (remainder.isEmpty()) {
                 return ItemStack.EMPTY;
             }
-            if (!existing.isEmpty() && ItemStack.isSameItemSameTags(existing, remainder)) {
+            if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(existing, remainder)) {
                 int limit = Math.min(existing.getMaxStackSize(), remainder.getMaxStackSize());
                 int accepted = Math.min(limit - existing.getCount(), remainder.getCount());
                 if (accepted > 0) {
@@ -96,7 +107,7 @@ public final class SteveInventory {
             if (existing.isEmpty()) {
                 return true;
             }
-            if (ItemStack.isSameItemSameTags(existing, offered)
+            if (ItemStack.isSameItemSameComponents(existing, offered)
                     && existing.getCount() < Math.min(existing.getMaxStackSize(), offered.getMaxStackSize())) {
                 return true;
             }
@@ -155,7 +166,7 @@ public final class SteveInventory {
             if (stack.isEmpty()) {
                 continue;
             }
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
             String displayId = "minecraft".equals(itemId.getNamespace())
                 ? itemId.getPath()
                 : itemId.toString();
@@ -208,7 +219,7 @@ public final class SteveInventory {
 
     private static String formatStack(ItemStack stack) {
         if (stack.isEmpty()) return "empty";
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         String displayId = "minecraft".equals(itemId.getNamespace()) ? itemId.getPath() : itemId.toString();
         if (!stack.isDamageableItem()) {
             return displayId + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
@@ -273,19 +284,21 @@ public final class SteveInventory {
      * Returns a copy of the tool, or null if none found.
      * Does NOT consume the tool.
      */
-    public ItemStack findBestTool(Tier requiredTier, Predicate<ItemStack> toolPredicate) {
+    public ItemStack findBestTool(Float requiredMiningSpeed, Predicate<ItemStack> toolPredicate) {
         ItemStack best = null;
-        int bestTier = -1;
+        float bestSpeed = -1.0F;
         for (ItemStack stack : contents) {
-            if (toolPredicate.test(stack) && stack.getItem() instanceof TieredItem) {
-                int tierLevel = ((TieredItem) stack.getItem()).getTier().getLevel();
-                if (tierLevel > bestTier) {
-                    bestTier = tierLevel;
-                    best = stack;
-                }
+            Tool tool = stack.get(DataComponents.TOOL);
+            if (tool == null || !toolPredicate.test(stack)) {
+                continue;
+            }
+            float speed = tool.defaultMiningSpeed();
+            if (speed > bestSpeed) {
+                bestSpeed = speed;
+                best = stack;
             }
         }
-        if (best != null && requiredTier != null && bestTier < requiredTier.getLevel()) {
+        if (best != null && requiredMiningSpeed != null && bestSpeed < requiredMiningSpeed) {
             return null;
         }
         return best != null ? best.copy() : null;
@@ -314,15 +327,16 @@ public final class SteveInventory {
         }
 
         int bestSlot = -1;
-        int bestTier = -1;
+        float bestSpeed = -1.0F;
         for (int slot = 0; slot < contents.size(); slot++) {
             ItemStack candidate = contents.get(slot);
-            if (!isEffectiveTool(candidate, block) || !(candidate.getItem() instanceof TieredItem tiered)) {
+            Tool tool = candidate.get(DataComponents.TOOL);
+            if (tool == null || !isEffectiveTool(candidate, block)) {
                 continue;
             }
-            int tier = tiered.getTier().getLevel();
-            if (tier > bestTier) {
-                bestTier = tier;
+            float speed = tool.defaultMiningSpeed();
+            if (speed > bestSpeed) {
+                bestSpeed = speed;
                 bestSlot = slot;
             }
         }
@@ -416,7 +430,7 @@ public final class SteveInventory {
         for (ItemStack candidate : contents) {
             if (!candidate.is(item)) continue;
             int matching = contents.stream()
-                .filter(stack -> ItemStack.isSameItemSameTags(candidate, stack))
+                .filter(stack -> ItemStack.isSameItemSameComponents(candidate, stack))
                 .mapToInt(ItemStack::getCount).sum();
             if (matching >= amount) {
                 prototype = candidate.copy();
@@ -428,7 +442,7 @@ public final class SteveInventory {
         int remaining = amount;
         for (int slot = 0; slot < contents.size() && remaining > 0; slot++) {
             ItemStack stack = contents.get(slot);
-            if (!ItemStack.isSameItemSameTags(prototype, stack)) continue;
+            if (!ItemStack.isSameItemSameComponents(prototype, stack)) continue;
             int take = Math.min(remaining, stack.getCount());
             stack.shrink(take);
             remaining -= take;
@@ -497,15 +511,17 @@ public final class SteveInventory {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
         tag.putInt("Size", contents.size());
-        ContainerHelper.saveAllItems(tag, contents);
+
+        TagValueOutput itemOutput = TagValueOutput.createWithoutContext(ProblemReporter.DISCARDING);
+        ContainerHelper.saveAllItems(itemOutput, contents);
+        tag.merge(itemOutput.buildResult());
 
         CompoundTag equipmentTag = new CompoundTag();
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             ItemStack stack = equipment.get(slot);
             if (!stack.isEmpty()) {
-                CompoundTag stackTag = new CompoundTag();
-                stack.save(stackTag);
-                equipmentTag.put(slot.getName(), stackTag);
+                DataResult<Tag> encoded = ItemStack.OPTIONAL_CODEC.encodeStart(NbtOps.INSTANCE, stack);
+                encoded.result().ifPresent(stackTag -> equipmentTag.put(slot.getName(), stackTag));
             }
         }
         tag.put("Equipment", equipmentTag);
@@ -519,7 +535,8 @@ public final class SteveInventory {
         int savedSize = tag.contains("Size") ? tag.getInt("Size") : contents.size();
         int targetSize = Math.max(contents.size(), Math.min(MAX_PERSISTED_SLOTS, savedSize));
         NonNullList<ItemStack> restored = NonNullList.withSize(targetSize, ItemStack.EMPTY);
-        ContainerHelper.loadAllItems(tag, restored);
+        ValueInput itemInput = TagValueInput.create(ProblemReporter.DISCARDING, null, tag);
+        ContainerHelper.loadAllItems(itemInput, restored);
         contents = restored;
 
         for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -530,10 +547,13 @@ public final class SteveInventory {
             CompoundTag equipmentTag = tag.getCompound("Equipment");
             for (EquipmentSlot slot : EquipmentSlot.values()) {
                 if (equipmentTag.contains(slot.getName(), CompoundTag.TAG_COMPOUND)) {
-                    CompoundTag stackTag = equipmentTag.getCompound(slot.getName());
-                    ItemStack stack = ItemStack.of(stackTag);
-                    if (!stack.isEmpty()) {
-                        equipment.put(slot, stack);
+                    Tag stackTag = equipmentTag.get(slot.getName());
+                    if (stackTag != null) {
+                        DataResult<ItemStack> decoded = ItemStack.OPTIONAL_CODEC.parse(NbtOps.INSTANCE, stackTag);
+                        ItemStack stack = decoded.result().orElse(ItemStack.EMPTY);
+                        if (!stack.isEmpty()) {
+                            equipment.put(slot, stack);
+                        }
                     }
                 }
             }
@@ -548,22 +568,27 @@ public final class SteveInventory {
         return stack.getDestroySpeed(state) > 1.0f;
     }
 
+    /** Sums a stack's attribute modifiers for the given slot (26.3 component-based equipment). */
+    private static double attributeValue(ItemStack stack, EquipmentSlot slot, Holder<Attribute> attribute) {
+        double[] total = {0.0D};
+        stack.forEachModifier(slot, (holder, modifier) -> {
+            if (holder.value() == attribute.value()) {
+                total[0] += modifier.amount();
+            }
+        });
+        return total[0];
+    }
+
     public ItemStack equipBestWeapon() {
         ItemStack best = null;
-        int bestScore = -1;
+        double bestScore = -1.0D;
         int bestSlot = -1;
         for (int i = 0; i < contents.size(); i++) {
             ItemStack stack = contents.get(i);
-            if (stack.isEmpty()) continue;
-            Item item = stack.getItem();
-            int score = -1;
-            if (item instanceof net.minecraft.world.item.SwordItem sword) {
-                score = sword.getTier().getLevel() * 10 + 5;
-            } else if (item instanceof net.minecraft.world.item.AxeItem axe) {
-                score = axe.getTier().getLevel() * 10;
-            } else if (item instanceof TieredItem tiered) {
-                score = tiered.getTier().getLevel() * 10 - 2;
+            if (stack.isEmpty()) {
+                continue;
             }
+            double score = attributeValue(stack, EquipmentSlot.MAINHAND, Attributes.ATTACK_DAMAGE);
             if (score > bestScore) {
                 bestScore = score;
                 best = stack;
@@ -582,37 +607,31 @@ public final class SteveInventory {
     public void equipBestArmor() {
         for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
             ItemStack currentArmor = getArmor(slot);
-            int currentDefense = -1;
-            if (!currentArmor.isEmpty() && currentArmor.getItem() instanceof net.minecraft.world.item.ArmorItem armorItem) {
-                currentDefense = armorItem.getDefense();
-            }
+            double currentDefense = currentArmor.isEmpty()
+                ? -1.0D : attributeValue(currentArmor, slot, Attributes.ARMOR);
 
             ItemStack best = null;
-            int bestDefense = currentDefense;
+            double bestDefense = currentDefense;
             int bestIndex = -1;
 
             for (int i = 0; i < contents.size(); i++) {
                 ItemStack stack = contents.get(i);
-                if (!stack.isEmpty() && stack.getItem() instanceof net.minecraft.world.item.ArmorItem armorItem) {
-                    if (armorItem.getEquipmentSlot() == slot) {
-                        int def = armorItem.getDefense();
-                        if (def > bestDefense) {
-                            bestDefense = def;
-                            best = stack;
-                            bestIndex = i;
-                        }
-                    }
+                Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
+                if (stack.isEmpty() || equippable == null || equippable.slot() != slot) {
+                    continue;
+                }
+                double defense = attributeValue(stack, slot, Attributes.ARMOR);
+                if (defense > bestDefense) {
+                    bestDefense = defense;
+                    best = stack;
+                    bestIndex = i;
                 }
             }
 
             if (best != null) {
                 ItemStack previous = currentArmor;
                 setArmor(slot, best.copy());
-                if (!previous.isEmpty()) {
-                    contents.set(bestIndex, previous.copy());
-                } else {
-                    contents.set(bestIndex, ItemStack.EMPTY);
-                }
+                contents.set(bestIndex, previous.isEmpty() ? ItemStack.EMPTY : previous.copy());
             }
         }
     }

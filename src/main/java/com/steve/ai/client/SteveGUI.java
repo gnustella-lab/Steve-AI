@@ -1,13 +1,16 @@
 package com.steve.ai.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
+
 import com.steve.ai.entity.SteveEntity;
+import com.steve.ai.SteveMod;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.Identifier;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
+import net.minecraftforge.client.gui.overlay.ForgeLayeredDraw;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -135,13 +138,15 @@ public class SteveGUI {
         addMessage("System", text, SYSTEM_BUBBLE_COLOR, false);
     }
 
-    @SubscribeEvent
-    public static void onRenderOverlay(RenderGuiOverlayEvent.Post event) {
-        if (!event.getOverlay().id().toString().contains("hotbar")) {
-            return; // Renderiza uma única vez por frame, depois da hotbar.
-        }
+        /** Registers the panel as a Forge HUD layer (26.3 overlay API). */
+    public static void registerOverlay() {
+        AddGuiOverlayLayersEvent.BUS.addListener(event -> event.getLayeredDraw().addAbove(
+            Identifier.fromNamespaceAndPath(SteveMod.MODID, "steve_panel"),
+            ForgeLayeredDraw.HOTBAR_AND_DECOS,
+            (graphics, delta) -> renderOverlay(graphics)));
+    }
 
-        Minecraft mc = Minecraft.getInstance();
+    private static void renderOverlay(GuiGraphicsExtractor graphics) {        Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
         if (isOpen && slideOffset > 0) {
@@ -153,17 +158,13 @@ public class SteveGUI {
         // Don't render if completely hidden
         if (slideOffset >= PANEL_WIDTH) return;
 
-        GuiGraphics graphics = event.getGuiGraphics();
+        
         int screenWidth = mc.getWindow().getGuiScaledWidth();
         int screenHeight = mc.getWindow().getGuiScaledHeight();
         
         int panelX = (int) (screenWidth - PANEL_WIDTH + slideOffset);
         int panelY = 0;
         int panelHeight = screenHeight;
-
-        RenderSystem.enableBlend();
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.blendFuncSeparate(
             com.mojang.blaze3d.platform.GlStateManager.SourceFactor.SRC_ALPHA,
             com.mojang.blaze3d.platform.GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
             com.mojang.blaze3d.platform.GlStateManager.SourceFactor.ONE,
@@ -175,8 +176,8 @@ public class SteveGUI {
 
         int headerHeight = 35;
         graphics.fillGradient(panelX, panelY, screenWidth, headerHeight, HEADER_COLOR, HEADER_COLOR);
-        graphics.drawString(mc.font, "§lSteve AI", panelX + PANEL_PADDING, panelY + 8, TEXT_COLOR);
-        graphics.drawString(mc.font, Component.translatable("gui.steve.close_hint"), panelX + PANEL_PADDING, panelY + 20, 0xFF888888);
+        graphics.text(mc.font, "§lSteve AI", panelX + PANEL_PADDING, panelY + 8, TEXT_COLOR);
+        graphics.text(mc.font, Component.translatable("gui.steve.close_hint"), panelX + PANEL_PADDING, panelY + 20, 0xFF888888);
 
         // Message history area
         int inputAreaY = screenHeight - 80;
@@ -199,7 +200,7 @@ public class SteveGUI {
         
         if (messages.isEmpty()) {
             for (var line : mc.font.split(Component.translatable("gui.steve.empty"), PANEL_WIDTH - PANEL_PADDING * 2)) {
-                graphics.drawString(mc.font, line, panelX + PANEL_PADDING, yPos, 0xFF888888);
+                graphics.text(mc.font, line, panelX + PANEL_PADDING, yPos, 0xFF888888);
                 yPos += MESSAGE_HEIGHT;
             }
         } else {
@@ -227,11 +228,11 @@ public class SteveGUI {
                     graphics.fillGradient(bubbleX - 3, msgY - 3, bubbleX + bubbleWidth + 3, msgY + bubbleHeight, msg.bubbleColor, msg.bubbleColor);
                     
                     // Draw sender name (small, above bubble)
-                    graphics.drawString(mc.font, "§7" + msg.sender, bubbleX, msgY - 12, 0xFFCCCCCC);
+                    graphics.text(mc.font, "§7" + msg.sender, bubbleX, msgY - 12, 0xFFCCCCCC);
                     
                     // Draw message text (white on colored bubble)
                     for (int line = 0; line < layout.lines().size(); line++) {
-                        graphics.drawString(mc.font, layout.lines().get(line), bubbleX + 5,
+                        graphics.text(mc.font, layout.lines().get(line), bubbleX + 5,
                             msgY + 5 + line * MESSAGE_HEIGHT, TEXT_COLOR);
                     }
                     
@@ -242,11 +243,11 @@ public class SteveGUI {
                     graphics.fillGradient(bubbleX - 3, msgY - 3, bubbleX + bubbleWidth + 3, msgY + bubbleHeight, msg.bubbleColor, msg.bubbleColor);
                     
                     // Draw sender name (small, above bubble)
-                    graphics.drawString(mc.font, "§l" + msg.sender, bubbleX, msgY - 12, TEXT_COLOR);
+                    graphics.text(mc.font, "§l" + msg.sender, bubbleX, msgY - 12, TEXT_COLOR);
                     
                     // Draw message text (white on colored bubble)
                     for (int line = 0; line < layout.lines().size(); line++) {
-                        graphics.drawString(mc.font, layout.lines().get(line), bubbleX + 5,
+                        graphics.text(mc.font, layout.lines().get(line), bubbleX + 5,
                             msgY + 5 + line * MESSAGE_HEIGHT, TEXT_COLOR);
                     }
                 }
@@ -265,7 +266,7 @@ public class SteveGUI {
 
         // Command input area (bottom) with gradient for alpha support
         graphics.fillGradient(panelX, inputAreaY, screenWidth, screenHeight, HEADER_COLOR, HEADER_COLOR);
-        graphics.drawString(mc.font, "§7Command:", panelX + PANEL_PADDING, inputAreaY + 10, 0xFF888888);
+        graphics.text(mc.font, "§7Command:", panelX + PANEL_PADDING, inputAreaY + 10, 0xFF888888);
 
         if (inputBox != null && isOpen) {
             inputBox.setX(panelX + PANEL_PADDING);
@@ -276,11 +277,9 @@ public class SteveGUI {
 
         int helpY = inputAreaY + 50;
         for (var line : mc.font.split(Component.translatable("gui.steve.help"), PANEL_WIDTH - PANEL_PADDING * 2)) {
-            graphics.drawString(mc.font, line, panelX + PANEL_PADDING, helpY, 0xFF888888);
+            graphics.text(mc.font, line, panelX + PANEL_PADDING, helpY, 0xFF888888);
             helpY += MESSAGE_HEIGHT;
         }
-        
-        RenderSystem.disableBlend();
     }
 
 

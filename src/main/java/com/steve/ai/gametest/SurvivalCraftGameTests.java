@@ -11,13 +11,13 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 import java.util.Map;
 import java.util.UUID;
 
-@GameTestHolder("steve_craft")
-@PrefixGameTestTemplate(false)
+@GameTestNamespace("steve_craft")
+@GameTestDontPrefix
 public final class SurvivalCraftGameTests {
     private static SteveEntity spawn(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
@@ -30,7 +30,7 @@ public final class SurvivalCraftGameTests {
         return steve;
     }
 
-    @GameTest(templateNamespace = "steve_craft", template = "empty", timeoutTicks = 240)
+    @GameTest(structure = "steve_craft:empty", maxTicks = 240)
     public static void pickaxeFromThreeLogsIncludesTable(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         steve.getSteveInventory().insert(new ItemStack(Items.OAK_LOG, 3));
@@ -45,7 +45,7 @@ public final class SurvivalCraftGameTests {
         });
     }
 
-    @GameTest(templateNamespace = "steve_craft", template = "empty", timeoutTicks = 80)
+    @GameTest(structure = "steve_craft:empty", maxTicks = 80)
     public static void missingHousePlanksRequestCrafting(GameTestHelper helper) {
         SteveEntity steve = spawn(helper);
         helper.setBlock(new BlockPos(3, 0, 3), Blocks.STONE);

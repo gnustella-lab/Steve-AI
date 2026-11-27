@@ -6,7 +6,7 @@ import com.steve.ai.memory.SteveMemory;
 import com.steve.ai.memory.WorldKnowledge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -220,7 +220,7 @@ public final class ObservationSnapshot {
             for (Map.Entry<Block, Integer> entry : wk.getNearbyBlocks().entrySet()) {
                 Block b = entry.getKey();
                 int count = entry.getValue();
-                ResourceLocation id = BuiltInRegistries.BLOCK.getKey(b);
+                Identifier id = BuiltInRegistries.BLOCK.getKey(b);
                 String blockName = id != null ? id.getPath() : "unknown";
                 String info = blockName + " (" + count + ")";
                 
@@ -242,7 +242,7 @@ public final class ObservationSnapshot {
             for (Map.Entry<BlockPos, Block> entry : wk.getNearbyBlockPositions().entrySet()) {
                 BlockPos blockPos = entry.getKey();
                 Block block = entry.getValue();
-                ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+                Identifier id = BuiltInRegistries.BLOCK.getKey(block);
                 String blockName = id == null ? "unknown" : id.getPath();
                 String positioned = blockName + "@[" + blockPos.getX() + ","
                     + blockPos.getY() + "," + blockPos.getZ() + "]";

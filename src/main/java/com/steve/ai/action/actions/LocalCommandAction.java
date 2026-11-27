@@ -8,7 +8,7 @@ import com.steve.ai.execution.ActionContext;
 import com.steve.ai.plugin.ActionRegistry;
 import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Items;
 
 /**
@@ -79,7 +79,7 @@ public class LocalCommandAction extends BaseAction {
     }
 
     private int countItem(String item) {
-        ResourceLocation id = ResourceLocation.tryParse(item);
+        Identifier id = Identifier.tryParse(item);
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) {
             return 0;
         }
@@ -87,7 +87,7 @@ public class LocalCommandAction extends BaseAction {
     }
 
     private static boolean registeredItem(String item) {
-        ResourceLocation id = ResourceLocation.tryParse(item);
+        Identifier id = Identifier.tryParse(item);
         return id != null && BuiltInRegistries.ITEM.containsKey(id)
             && BuiltInRegistries.ITEM.get(id) != Items.AIR;
     }

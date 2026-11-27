@@ -8,13 +8,13 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 
-@GameTestHolder("steve_compound")
-@PrefixGameTestTemplate(false)
+@GameTestNamespace("steve_compound")
+@GameTestDontPrefix
 public final class CompoundLocalGameTests {
-    @GameTest(templateNamespace = "steve_compound", template = "empty", timeoutTicks = 400)
+    @GameTest(structure = "steve_compound:empty", maxTicks = 400)
     public static void craftsInOrderAndRecountsSecondTarget(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Compound");

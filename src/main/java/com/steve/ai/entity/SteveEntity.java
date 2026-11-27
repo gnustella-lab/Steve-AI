@@ -79,9 +79,9 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    protected void defineSynchedData() {
-        super.defineSynchedData();
-        this.entityData.define(STEVE_NAME, "Steve");
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(STEVE_NAME, "Steve");
     }
 
     @Override
@@ -356,11 +356,7 @@ public class SteveEntity extends PathfinderMob {
         }
         ItemStack entityHand = this.getMainHandItem();
         ItemStack target = entityHand.isDamageableItem() ? entityHand : tool;
-        try {
-            target.hurtAndBreak(1, this, item -> {});
-        } catch (Throwable ignored) {
-            target.setDamageValue(target.getDamageValue() + 1);
-        }
+        target.setDamageValue(target.getDamageValue() + 1);
         if (target.getDamageValue() >= target.getMaxDamage()) {
             target.shrink(1);
             if (target.isEmpty()) {
@@ -375,10 +371,8 @@ public class SteveEntity extends PathfinderMob {
     @Override
     @Nullable
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty,
-                                       MobSpawnType spawnType, @Nullable SpawnGroupData spawnData,
-                                       @Nullable CompoundTag tag) {
-        spawnData = super.finalizeSpawn(level, difficulty, spawnType, spawnData, tag);
-        return spawnData;
+                                       EntitySpawnReason spawnType, @Nullable SpawnGroupData spawnData) {
+        return super.finalizeSpawn(level, difficulty, spawnType, spawnData);
     }
 
     /**

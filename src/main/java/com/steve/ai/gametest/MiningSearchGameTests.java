@@ -9,14 +9,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 import java.util.Map;
 
-@GameTestHolder("steve_search")
-@PrefixGameTestTemplate(false)
+@GameTestNamespace("steve_search")
+@GameTestDontPrefix
 public final class MiningSearchGameTests {
-    @GameTest(templateNamespace = "steve_search", template = "empty", timeoutTicks = 20)
+    @GameTest(structure = "steve_search:empty", maxTicks = 20)
     public static void targetOutsideLocalRadiusIsNotChased(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
@@ -35,7 +35,7 @@ public final class MiningSearchGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "steve_search", template = "empty", timeoutTicks = 20)
+    @GameTest(structure = "steve_search:empty", maxTicks = 20)
     public static void absentResourceStopsWithoutExcavating(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));

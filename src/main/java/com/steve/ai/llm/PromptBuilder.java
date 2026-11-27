@@ -6,7 +6,7 @@ import com.steve.ai.plugin.ActionDescriptor;
 import com.steve.ai.plugin.ActionRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
@@ -151,7 +151,7 @@ public final class PromptBuilder {
 
     private static String formatStack(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return "empty";
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         String displayId = "minecraft".equals(itemId.getNamespace()) ? itemId.getPath() : itemId.toString();
         if (!stack.isDamageableItem()) return displayId + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
         int durability = Math.max(0, Math.round(100.0f * (stack.getMaxDamage() - stack.getDamageValue())

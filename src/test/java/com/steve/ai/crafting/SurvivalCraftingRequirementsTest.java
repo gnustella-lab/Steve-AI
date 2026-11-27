@@ -4,7 +4,7 @@ import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.core.NonNullList;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.*;
@@ -42,7 +42,7 @@ class SurvivalCraftingRequirementsTest {
         graph.addRecipe("planks", RecipeType.CRAFTING, List.of(i(Items.OAK_LOG, 1)), "minecraft:oak_planks", 4);
         graph.addRecipe("sticks", RecipeType.CRAFTING, List.of(i(Items.OAK_PLANKS, 2)), "minecraft:stick", 4);
         graph.addRecipe("pickaxe", RecipeType.CRAFTING, List.of(i(Items.OAK_PLANKS, 3), i(Items.STICK, 2)), "minecraft:wooden_pickaxe", 1);
-        Recipe<?> pickaxe = new ShapedRecipe(new ResourceLocation("test:pickaxe"), "", CraftingBookCategory.EQUIPMENT, 3, 3,
+        Recipe<?> pickaxe = new ShapedRecipe(Identifier.fromNamespaceAndPath("test:pickaxe"), "", CraftingBookCategory.EQUIPMENT, 3, 3,
             NonNullList.withSize(9, Ingredient.of(Items.OAK_PLANKS)), new ItemStack(Items.WOODEN_PICKAXE));
         var method = CraftingPlanner.class.getDeclaredMethod("calculateRequirements", List.class, RecipeDependencyGraph.class,
             String.class, int.class, SteveInventory.class, Map.class);

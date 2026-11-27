@@ -26,27 +26,27 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@GameTestHolder(SteveMod.MODID)
-@PrefixGameTestTemplate(false)
+@GameTestNamespace(SteveMod.MODID)
+@GameTestDontPrefix
 public final class SteveGameTests {
     private SteveGameTests() {
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void dedicatedServerLoadsCoreRuntime(GameTestHelper helper) {
         helper.assertTrue(SteveMod.getServiceContainer() != null,
             "The shared service container was not initialized");
@@ -57,7 +57,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty")
+    @GameTest(structure = SteveMod.MODID + ":empty")
     public static void inventoryAndOwnershipPersistInEntityNbt(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         UUID ownerUuid = UUID.randomUUID();
@@ -83,7 +83,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void damageAndTransientInvulnerabilityFollowRuntimePolicy(GameTestHelper helper) {
         SteveEntity normal = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         normal.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -112,7 +112,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void transientInvulnerabilityDoesNotSurviveEntityReload(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         original.setInvulnerableBuilding(true);
@@ -130,7 +130,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatWithoutTargetFailsInsteadOfReportingSuccess(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -152,7 +152,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatSucceedsOnlyAfterObservedDefeat(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -176,7 +176,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatTargetRemovedBeforeEngagementIsEntityGone(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -197,7 +197,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatPartialEngagementTimesOutWithoutFalseSuccess(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -226,7 +226,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void combatCancellationRestoresTransientState(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -245,7 +245,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void buildCancellationRestoresTransientState(GameTestHelper helper) {
         CollaborativeBuildManager.clearAllBuilds();
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
@@ -263,7 +263,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void mobilityCapabilitiesFailClosedAndProtectedTeleportIsDenied(GameTestHelper helper) {
         BlockPos destination = null;
         try {
@@ -300,7 +300,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void flightStateDoesNotSurviveReloadEvenWhenCapabilityPersists(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         original.getAccessProfile().grantCapability(AgentCapability.ALLOW_FLIGHT);
@@ -317,7 +317,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void persistedPlanIsCheckpointOnlyAndNeverResumed(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         AgentGoal goal = AgentGoal.create("Place one stone", GoalOrigin.USER, GoalPriority.USER, null, 1L);
@@ -342,7 +342,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty")
+    @GameTest(structure = SteveMod.MODID + ":empty")
     public static void protectedRegionKeysCanonicalizeCornerOrder(GameTestHelper helper) {
         BlockPos min = helper.absolutePos(new BlockPos(1, 1, 1));
         BlockPos max = helper.absolutePos(new BlockPos(3, 3, 3));
@@ -359,7 +359,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty")
+    @GameTest(structure = SteveMod.MODID + ":empty")
     public static void minedBlockLootMovesToSteveInventory(GameTestHelper helper) {
         BlockPos relativeBlock = new BlockPos(1, 1, 1);
         helper.setBlock(relativeBlock, Blocks.STONE);
@@ -379,7 +379,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty")
+    @GameTest(structure = SteveMod.MODID + ":empty")
     public static void miningApiRejectsRemoteBlockMutation(GameTestHelper helper) {
         BlockPos remoteRelative = new BlockPos(8, 1, 1);
         helper.setBlock(remoteRelative, Blocks.STONE);
@@ -394,7 +394,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 100)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 100)
     public static void groundItemMovesToSteveInventory(GameTestHelper helper) {
         BlockPos relativePosition = new BlockPos(1, 1, 1);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
@@ -412,7 +412,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void removingSteveDropsInventoryExactlyOnce(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1Removal");
@@ -433,7 +433,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void cancelledMiningRestoresPreviousMainHandItem(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase1ToolRestore");
@@ -457,7 +457,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 200)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 200)
     public static void placingBlockInSurvivalConsumesInventoryMaterial(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.AIR.defaultBlockState());
@@ -487,7 +487,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 200)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 200)
     public static void refusesToPlaceWhenInventoryIsEmpty(GameTestHelper helper) {
         BlockPos slot = new BlockPos(1, 1, 1);
         helper.setBlock(slot, Blocks.AIR.defaultBlockState());
@@ -532,7 +532,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 200)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 200)
     public static void craftingConsumesIngredientsAndProducesResult(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Phase2Crafter");
@@ -564,7 +564,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 600)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 600)
     public static void smeltingConsumesInputAndProducesIngot(GameTestHelper helper) {
         BlockPos furnacePos = helper.absolutePos(new BlockPos(1, 1, 1));
         helper.setBlock(new BlockPos(1, 1, 1), Blocks.FURNACE);
@@ -599,7 +599,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty")
+    @GameTest(structure = SteveMod.MODID + ":empty")
     public static void smeltingDoesNotStealOrCountUnrelatedOutput(GameTestHelper helper) {
         BlockPos furnacePos = helper.absolutePos(new BlockPos(1, 1, 1));
         helper.setBlock(new BlockPos(1, 1, 1), Blocks.FURNACE);
@@ -630,7 +630,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 400)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 400)
     public static void depositingItemsMovesStacksToNearbyContainer(GameTestHelper helper) {
         helper.setBlock(new BlockPos(1, 1, 1), Blocks.CHEST);
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
@@ -667,7 +667,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 100)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 100)
     public static void toolWearProgressesDurabilityDuringMining(GameTestHelper helper) {
         BlockPos stone = new BlockPos(1, 1, 1);
         helper.setBlock(stone, Blocks.STONE);
@@ -691,7 +691,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 160)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 160)
     public static void pausingWhilePlanningDiscardsLateResponse(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("AutonomyPause_" + UUID.randomUUID().toString().substring(0, 8));
@@ -720,7 +720,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 700)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 700)
     public static void autonomousIronGoalSmeltsAndVerifiesInventory(GameTestHelper helper) {
         BlockPos relativeFurnace = new BlockPos(1, 1, 1);
         BlockPos furnacePos = helper.absolutePos(relativeFurnace);
@@ -762,7 +762,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void refusesToBreakProtectedBlock(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
@@ -780,7 +780,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 200)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 200)
     public static void refusesToPlaceInProtectedRegion(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.AIR.defaultBlockState());
@@ -808,7 +808,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void miningOverflowDropsRemainderInsteadOfDeletingOrDuplicating(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
@@ -833,7 +833,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void miningDoesNotDuplicateLootOnRepeatedBreak(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
@@ -851,7 +851,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void brokenToolIsRemovedWithoutDuplication(GameTestHelper helper) {
         BlockPos relative = new BlockPos(1, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
@@ -872,7 +872,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 80)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 80)
     public static void permissionRevokedDuringActionInterruptsWithoutWorldMutation(GameTestHelper helper) {
         BlockPos relative = new BlockPos(2, 1, 2);
         helper.setBlock(relative, Blocks.AIR.defaultBlockState());
@@ -907,7 +907,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 80)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 80)
     public static void pausedGoalRemainsPausedAfterReload(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         original.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -930,7 +930,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 20)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 20)
     public static void blockedGoalIsNotAutoResumedAfterReload(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         AgentGoal blocked = AgentGoal.create("Build inside spawn", GoalOrigin.USER, GoalPriority.USER, null, 1L);
@@ -950,7 +950,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 80)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 80)
     public static void stopIsAbsoluteAndDoesNotResume(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0.0F, 0.0F);
@@ -968,7 +968,7 @@ public final class SteveGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 240)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 240)
     public static void invalidLlmTaskNeverMutatesTheWorld(GameTestHelper helper) {
         BlockPos relative = new BlockPos(2, 1, 1);
         helper.setBlock(relative, Blocks.STONE);
@@ -994,7 +994,7 @@ public final class SteveGameTests {
         });
     }
 
-    @GameTest(templateNamespace = SteveMod.MODID, template = "empty", timeoutTicks = 240)
+    @GameTest(structure = SteveMod.MODID + ":empty", maxTicks = 240)
     public static void autonomousControllerReplansAfterProtectedAction(GameTestHelper helper) {
         BlockPos relativeTarget = new BlockPos(2, 1, 1);
         BlockPos target = helper.absolutePos(relativeTarget);
