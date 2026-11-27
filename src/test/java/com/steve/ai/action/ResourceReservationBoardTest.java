@@ -19,8 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ResourceReservationBoardTest {
     @BeforeAll
     static void bootstrapMinecraftRegistries() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        com.steve.ai.TestBootstrap.bootstrap();
     }
 
     @AfterEach

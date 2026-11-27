@@ -18,8 +18,7 @@ class IngredientResolverTest {
 
     @BeforeAll
     static void bootstrapMinecraftRegistries() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        com.steve.ai.TestBootstrap.bootstrap();
     }
 
     @Test

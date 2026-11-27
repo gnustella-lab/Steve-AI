@@ -17,8 +17,7 @@ class SteveInventorySurvivalTest {
 
     @BeforeAll
     static void bootstrapMinecraftRegistries() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        com.steve.ai.TestBootstrap.bootstrap();
     }
 
     private SteveInventory inventory;

@@ -15,8 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SteveInventoryToolSwapTest {
     @BeforeAll
     static void bootstrapMinecraftRegistries() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        com.steve.ai.TestBootstrap.bootstrap();
     }
 
     @Test

@@ -14,7 +14,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SurvivalCraftingRequirementsTest {
-    @BeforeAll static void bootstrap() { SharedConstants.tryDetectVersion(); Bootstrap.bootStrap(); }
+    @BeforeAll static void bootstrap() { com.steve.ai.TestBootstrap.bootstrap(); }
 
     @Test void emptyInventoryNeedsLogsNotGatheredPlanksForTable() throws Exception {
         Object requirements = requirements(new SteveInventory(36));
