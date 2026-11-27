@@ -37,5 +37,18 @@ This mod now targets **Minecraft Java Edition 26.3**, **Forge 66.1.9**, **Java 2
 | `@GameTestHolder`, `@PrefixGameTestTemplate`, `@GameTest(templateNamespace/template/timeoutTicks)` | `@GameTestNamespace`, `@GameTestDontPrefix`, Forge `@GameTest(structure/maxTicks)` |
 | `CommandSourceStack#hasPermission(int)` | `PermissionSet` / operator status via `PlayerList#isOp` |
 | `Level.isClientSide` field | `Level.isClientSide()` method |
+| `CompoundTag#getInt/getString/getCompound/getList` | `*Or` / `*OrEmpty` variants (getters return `Optional`) |
+| `CompoundTag#putUUID/getUUID/hasUUID` | String UUIDs via `NbtCompat` |
+| `Entity#addAdditionalSaveData(CompoundTag)` | `addAdditionalSaveData(ValueOutput)` with `CompoundTag.CODEC` |
+| `Registry#get(Identifier)` returning value | `getOptional`/holder-aware `ModApi.item/block` helpers |
+| `ResourceKey#location()` | `ResourceKey#identifier()` |
+| `Entity#moveTo(BlockPos, …)` | `Entity#setPos(Vec3)` |
+| `LivingEntity#hurt` returning boolean | `void`; damage verified by health delta |
+| `LivingEntity#swing(hand, boolean)` | `swing(hand, SwingAnimation.DEFAULT, boolean)` |
+| `EntityTypes.ZOMBIE`, `EntityType#create(Level)` | `EntityTypes.ZOMBIE.create(level, EntitySpawnReason)` |
+| `StructureTemplateManager` lookup | `ServerLevel#getStructureTemplateManager()` |
+| `Minecraft#setScreen/screen` | `Minecraft.gui.setScreen()/screen()` |
+| `EditBox#render/keyPressed/charTyped/tick` | `extractWidgetRenderState`/input event objects |
 
-`ModernRecipes` centralizes the display-driven recipe queries used by the crafting planner.
+`ModernRecipes`, `ModApi` and `NbtCompat` centralize the display-driven recipe queries,
+registry lookups and NBT compatibility helpers used by the ported code.
