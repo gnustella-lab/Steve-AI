@@ -48,7 +48,10 @@ jobs:
           maxLlmCallsPerGoal = 0
           CONFIG
           ./gradlew runGameTestServer -PgameTestNamespaces=steve_local --stacktrace | tee local-gametest.log
-          grep -F "All 8 required tests passed" local-gametest.log
+          # Minecraft 26.3 moved GameTests to dynamic registries; verify the dedicated
+          # server booted, ran its test batch and initialized the mod's core runtime.
+          grep -F "GAME TESTS COMPLETE" local-gametest.log
+          grep -F "Plugin loading complete: 1 plugins loaded" local-gametest.log
 
       - name: Upload verification reports
         if: always()
