@@ -20,8 +20,8 @@ class AgentGoalTest {
         CompoundTag tag = goal.save();
         AgentGoal restored = AgentGoal.load(tag);
 
-        assertEquals(GoalIntent.DATA_VERSION, tag.getCompound("Intent").getInt("DataVersion"));
-        assertEquals(GoalProgress.DATA_VERSION, tag.getCompound("Progress").getInt("DataVersion"));
+        assertEquals(GoalIntent.DATA_VERSION, tag.getCompoundOrEmpty("Intent").getIntOr("DataVersion", 0));
+        assertEquals(GoalProgress.DATA_VERSION, tag.getCompoundOrEmpty("Progress").getIntOr("DataVersion", 0));
         assertTrue(restored.getIntent().getDescription().length() <= GoalIntent.MAX_DESCRIPTION_LENGTH);
         assertTrue(restored.getProgress().getCompletedUnits() <= GoalProgress.MAX_COUNTER);
         assertTrue(restored.getProgress().getTargetUnits() <= GoalProgress.MAX_COUNTER);

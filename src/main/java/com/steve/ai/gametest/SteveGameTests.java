@@ -116,7 +116,7 @@ public final class SteveGameTests {
     public static void transientInvulnerabilityDoesNotSurviveEntityReload(GameTestHelper helper) {
         SteveEntity original = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         original.setInvulnerableBuilding(true);
-        original.setInvulnerable(true); // Simulate a save produced by the old implementation.
+        original.setPermanentlyInvulnerable(true); // Simulate a save produced by the old implementation.
         CompoundTag entityTag = new CompoundTag();
         original.saveWithoutId(entityTag);
 
@@ -125,7 +125,7 @@ public final class SteveGameTests {
 
         helper.assertTrue(!restored.isBuildingInvulnerable(),
             "Transient build invulnerability must not be restored from NBT");
-        helper.assertTrue(!restored.isInvulnerableTo(helper.getLevel().damageSources().generic()),
+        helper.assertTrue(!restored.isInvulnerableTo(helper.getLevel(), helper.getLevel().damageSources().generic()),
             "Legacy vanilla Invulnerable flag must be cleared on reload");
         helper.succeed();
     }
@@ -212,7 +212,7 @@ public final class SteveGameTests {
             new Task("combat", Map.of("target", "zombie")));
         combat.start();
         for (int tick = 0; tick < 8 && !combat.isComplete(); tick++) combat.tick();
-        zombie.setInvulnerable(true);
+        zombie.setPermanentlyInvulnerable(true);
         for (int tick = 0; tick < 610 && !combat.isComplete(); tick++) combat.tick();
 
         ActionResult result = combat.getResult();

@@ -142,15 +142,15 @@ public class StructureTemplateLoader {
         List<TemplateBlock> blocks = new ArrayList<>();
         
         var sizeList = nbt.getListOrEmpty("size"); // 3 = TAG_Int
-        int width = sizeList.getInt(0);
-        int height = sizeList.getInt(1);
-        int depth = sizeList.getInt(2);
+        int width = sizeList.getIntOr(0, 0);
+        int height = sizeList.getIntOr(1, 0);
+        int depth = sizeList.getIntOr(2, 0);
         
         var paletteList = nbt.getListOrEmpty("palette"); // 10 = TAG_Compound
         List<BlockState> palette = new ArrayList<>();
         
         for (int i = 0; i < paletteList.size(); i++) {
-            CompoundTag blockTag = paletteList.getCompound(i);
+            CompoundTag blockTag = paletteList.getCompoundOrEmpty(i);
             try {
                 palette.add(NbtUtils.readBlockState(
                     net.minecraft.core.registries.BuiltInRegistries.BLOCK.asLookup(), blockTag));
@@ -162,15 +162,15 @@ public class StructureTemplateLoader {
         
         var blocksList = nbt.getListOrEmpty("blocks");
         for (int i = 0; i < blocksList.size(); i++) {
-            CompoundTag blockTag = blocksList.getCompound(i);
+            CompoundTag blockTag = blocksList.getCompoundOrEmpty(i);
             
-            int paletteIndex = blockTag.getInt("state");
+            int paletteIndex = blockTag.getIntOr("state", 0);
             var posList = blockTag.getListOrEmpty("pos");
             
             BlockPos pos = new BlockPos(
-                posList.getInt(0),
-                posList.getInt(1),
-                posList.getInt(2)
+                posList.getIntOr(0, 0),
+                posList.getIntOr(1, 0),
+                posList.getIntOr(2, 0)
             );
             
             BlockState state = palette.get(paletteIndex);

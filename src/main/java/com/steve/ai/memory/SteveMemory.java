@@ -252,48 +252,48 @@ public class SteveMemory {
         clearAllState();
         if (tag == null || tag.isEmpty()) return;
 
-        activeGoal = tag.contains("ActiveGoal", Tag.TAG_COMPOUND)
-            ? AgentGoal.load(tag.getCompound("ActiveGoal")) : null;
-        currentGoal = bounded(tag.contains("CurrentGoal") ? tag.getString("CurrentGoal") : "", 512);
+        activeGoal = tag.contains("ActiveGoal")
+            ? AgentGoal.load(tag.getCompoundOrEmpty("ActiveGoal")) : null;
+        currentGoal = bounded(tag.contains("CurrentGoal") ? tag.getStringOr("CurrentGoal", "") : "", 512);
         if (activeGoal != null) currentGoal = activeGoal.getDescription();
 
-        if (tag.contains("ActivePlan", Tag.TAG_COMPOUND)) {
-            activePlan = Plan.load(tag.getCompound("ActivePlan"));
+        if (tag.contains("ActivePlan")) {
+            activePlan = Plan.load(tag.getCompoundOrEmpty("ActivePlan"));
         }
         if (tag.contains("AutonomyModeOverride")) {
-            autonomyModeOverride = AutonomyMode.tryParse(tag.getString("AutonomyModeOverride"));
+            autonomyModeOverride = AutonomyMode.tryParse(tag.getStringOr("AutonomyModeOverride", ""));
         }
 
-        if (tag.contains("PendingGoals", Tag.TAG_LIST)) {
-            ListTag pendingGoals = tag.getList("PendingGoals", Tag.TAG_COMPOUND);
+        if (tag.contains("PendingGoals")) {
+            ListTag pendingGoals = tag.getListOrEmpty("PendingGoals");
             int start = Math.max(0, pendingGoals.size() - MAX_PERSISTED_GOALS);
             for (int i = start; i < pendingGoals.size(); i++) {
-                rememberGoal(AgentGoal.load(pendingGoals.getCompound(i)));
+                rememberGoal(AgentGoal.load(pendingGoals.getCompoundOrEmpty(i)));
             }
         }
 
-        if (tag.contains("RecentActions", Tag.TAG_LIST)) {
-            ListTag actions = tag.getList("RecentActions", Tag.TAG_STRING);
+        if (tag.contains("RecentActions")) {
+            ListTag actions = tag.getListOrEmpty("RecentActions");
             int start = Math.max(0, actions.size() - MAX_RECENT_ACTIONS);
-            for (int i = start; i < actions.size(); i++) addAction(actions.getString(i));
+            for (int i = start; i < actions.size(); i++) addAction(actions.getStringOr(i, ""));
         }
 
-        if (tag.contains("Episodes", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("Episodes", Tag.TAG_COMPOUND);
+        if (tag.contains("Episodes")) {
+            ListTag list = tag.getListOrEmpty("Episodes");
             int start = Math.max(0, list.size() - MAX_EPISODES);
-            for (int i = start; i < list.size(); i++) addEpisode(EpisodicMemoryEntry.load(list.getCompound(i)));
+            for (int i = start; i < list.size(); i++) addEpisode(EpisodicMemoryEntry.load(list.getCompoundOrEmpty(i)));
         }
 
-        if (tag.contains("WorldFacts", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("WorldFacts", Tag.TAG_COMPOUND);
+        if (tag.contains("WorldFacts")) {
+            ListTag list = tag.getListOrEmpty("WorldFacts");
             int start = Math.max(0, list.size() - MAX_WORLD_FACTS);
-            for (int i = start; i < list.size(); i++) rememberWorldFact(WorldFact.load(list.getCompound(i)));
+            for (int i = start; i < list.size(); i++) rememberWorldFact(WorldFact.load(list.getCompoundOrEmpty(i)));
         }
 
-        if (tag.contains("GoalHistory", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("GoalHistory", Tag.TAG_STRING);
+        if (tag.contains("GoalHistory")) {
+            ListTag list = tag.getListOrEmpty("GoalHistory");
             int start = Math.max(0, list.size() - MAX_GOAL_HISTORY);
-            for (int i = start; i < list.size(); i++) goalHistory.add(bounded(list.getString(i), 512));
+            for (int i = start; i < list.size(); i++) goalHistory.add(bounded(list.getStringOr(i, ""), 512));
         }
     }
 

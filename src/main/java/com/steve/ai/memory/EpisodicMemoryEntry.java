@@ -52,11 +52,11 @@ public final class EpisodicMemoryEntry {
 
     public static EpisodicMemoryEntry load(CompoundTag tag) {
         BlockPos position = tag.contains("X") && tag.contains("Y") && tag.contains("Z")
-            ? new BlockPos(tag.getInt("X"), tag.getInt("Y"), tag.getInt("Z")) : null;
+            ? new BlockPos(tag.getIntOr("X", 0), tag.getIntOr("Y", 0), tag.getIntOr("Z", 0)) : null;
         return new EpisodicMemoryEntry(
             tag.hasUUID("GoalId") ? tag.getUUID("GoalId") : null,
-            tag.getString("Action"), tag.getString("ResultCode"), tag.getString("Message"),
-            tag.getString("Dimension"), position, tag.getLong("Tick"));
+            tag.getStringOr("Action", ""), tag.getStringOr("ResultCode", ""), tag.getStringOr("Message", ""),
+            tag.getStringOr("Dimension", ""), position, tag.getLongOr("Tick", 0L));
     }
 
     private static String bounded(String value, int max) {

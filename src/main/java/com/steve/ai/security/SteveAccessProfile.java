@@ -110,7 +110,7 @@ public final class SteveAccessProfile {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
         if (ownerUuid != null) {
-            tag.putUUID("Owner", ownerUuid);
+            tag.putString("Owner", ownerUuid.toString());
         }
         ListTag authorized = new ListTag();
         authorizedPlayers.stream()
@@ -139,13 +139,17 @@ public final class SteveAccessProfile {
             return;
         }
 
-        if (tag.hasUUID("Owner")) {
-            ownerUuid = tag.getUUID("Owner");
+        if (tag.contains("Owner")) {
+            try {
+                ownerUuid = UUID.fromString(tag.getStringOr("Owner", ""));
+            } catch (IllegalArgumentException ignored) {
+                ownerUuid = null;
+            }
         }
-        ListTag authorized = tag.getList("AuthorizedPlayers", Tag.TAG_STRING);
+        ListTag authorized = tag.getListOrEmpty("AuthorizedPlayers");
         for (int index = 0; index < authorized.size(); index++) {
             try {
-                UUID playerUuid = UUID.fromString(authorized.getString(index));
+                UUID playerUuid = UUID.fromString(authorized.getStringOr(index, ""));
                 if (!playerUuid.equals(ownerUuid)) {
                     authorizedPlayers.add(playerUuid);
                 }
@@ -153,19 +157,19 @@ public final class SteveAccessProfile {
                 // Dados inválidos antigos são ignorados sem ampliar acesso.
             }
         }
-        ListTag savedCapabilities = tag.getList("Capabilities", Tag.TAG_STRING);
+        ListTag savedCapabilities = tag.getListOrEmpty("Capabilities");
         for (int index = 0; index < savedCapabilities.size(); index++) {
             try {
-                capabilities.add(AgentCapability.valueOf(savedCapabilities.getString(index)));
+                capabilities.add(AgentCapability.valueOf(savedCapabilities.getStringOr(index, "")));
             } catch (IllegalArgumentException ignored) {
                 // Unknown future/invalid capabilities fail closed.
             }
         }
-        if (tag.contains("Team", Tag.TAG_STRING)) {
-            team = normalizeLoadedMetadata(tag.getString("Team"), "");
+        if (tag.contains("Team")) {
+            team = normalizeLoadedMetadata(tag.getStringOr("Team", ""), "");
         }
-        if (tag.contains("PermissionProfile", Tag.TAG_STRING)) {
-            permissionProfile = normalizeLoadedMetadata(tag.getString("PermissionProfile"), "default");
+        if (tag.contains("PermissionProfile")) {
+            permissionProfile = normalizeLoadedMetadata(tag.getStringOr("PermissionProfile", ""), "default");
         }
     }
 

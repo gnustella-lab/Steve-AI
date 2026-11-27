@@ -226,31 +226,31 @@ public final class AgentGoal {
         }
         AgentGoal goal = new AgentGoal(
             tag.hasUUID("Id") ? tag.getUUID("Id") : UUID.randomUUID(),
-            tag.getString("Description"),
-            readEnum(tag.getString("Origin"), GoalOrigin.USER),
-            readEnum(tag.getString("Priority"), GoalPriority.USER),
-            readEnum(tag.getString("Status"), GoalStatus.PAUSED),
+            tag.getStringOr("Description", ""),
+            readEnum(tag.getStringOr("Origin", ""), GoalOrigin.USER),
+            readEnum(tag.getStringOr("Priority", ""), GoalPriority.USER),
+            readEnum(tag.getStringOr("Status", ""), GoalStatus.PAUSED),
             tag.hasUUID("ParentGoalId") ? tag.getUUID("ParentGoalId") : null,
-            tag.getLong("CreatedAt"),
-            tag.contains("UpdatedAt") ? tag.getLong("UpdatedAt") : tag.getLong("CreatedAt"),
-            tag.getInt("AttemptCount"),
-            tag.getInt("ReplanCount"),
-            tag.contains("Constraints", Tag.TAG_COMPOUND)
-                ? GoalConstraints.load(tag.getCompound("Constraints")) : GoalConstraints.empty(),
-            tag.contains("Budget", Tag.TAG_COMPOUND)
-                ? GoalBudget.load(tag.getCompound("Budget")) : new GoalBudget());
+            tag.getLongOr("CreatedAt", 0L),
+            tag.contains("UpdatedAt") ? tag.getLongOr("UpdatedAt", 0L) : tag.getLongOr("CreatedAt", 0L),
+            tag.getIntOr("AttemptCount", 0),
+            tag.getIntOr("ReplanCount", 0),
+            tag.contains("Constraints")
+                ? GoalConstraints.load(tag.getCompoundOrEmpty("Constraints")) : GoalConstraints.empty(),
+            tag.contains("Budget")
+                ? GoalBudget.load(tag.getCompoundOrEmpty("Budget")) : new GoalBudget());
 
-        if (tag.contains("Intent", Tag.TAG_COMPOUND)) {
-            goal.intent = GoalIntent.load(tag.getCompound("Intent"));
+        if (tag.contains("Intent")) {
+            goal.intent = GoalIntent.load(tag.getCompoundOrEmpty("Intent"));
         }
-        if (tag.contains("Progress", Tag.TAG_COMPOUND)) {
-            goal.progress = GoalProgress.load(tag.getCompound("Progress"));
+        if (tag.contains("Progress")) {
+            goal.progress = GoalProgress.load(tag.getCompoundOrEmpty("Progress"));
         }
-        if (tag.contains("Metadata", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("Metadata", Tag.TAG_COMPOUND);
+        if (tag.contains("Metadata")) {
+            ListTag list = tag.getListOrEmpty("Metadata");
             for (int i = 0; i < Math.min(list.size(), MAX_METADATA_ENTRIES); i++) {
-                CompoundTag item = list.getCompound(i);
-                goal.putMetadata(item.getString("Key"), item.getString("Value"));
+                CompoundTag item = list.getCompoundOrEmpty(i);
+                goal.putMetadata(item.getStringOr("Key", ""), item.getStringOr("Value", ""));
             }
         }
         return goal;

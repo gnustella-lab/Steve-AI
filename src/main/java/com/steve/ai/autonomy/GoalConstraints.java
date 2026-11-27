@@ -95,17 +95,17 @@ public record GoalConstraints(
         }
         BlockPos position = null;
         if (tag.contains("TargetX") && tag.contains("TargetY") && tag.contains("TargetZ")) {
-            position = new BlockPos(tag.getInt("TargetX"), tag.getInt("TargetY"), tag.getInt("TargetZ"));
+            position = new BlockPos(tag.getIntOr("TargetX", 0), tag.getIntOr("TargetY", 0), tag.getIntOr("TargetZ", 0));
         }
         return new GoalConstraints(
-            tag.getString("TargetItem"),
-            tag.getInt("TargetQuantity"),
-            tag.getString("TargetBlock"),
+            tag.getStringOr("TargetItem", ""),
+            tag.getIntOr("TargetQuantity", 0),
+            tag.getStringOr("TargetBlock", ""),
             tag.hasUUID("TargetPlayer") ? tag.getUUID("TargetPlayer") : null,
             position,
-            tag.contains("PositionTolerance") ? tag.getInt("PositionTolerance") : 2,
-            !tag.contains("AllowExploration") || tag.getBoolean("AllowExploration"),
-            tag.getBoolean("RequireDelivery"));
+            tag.contains("PositionTolerance") ? tag.getIntOr("PositionTolerance", 0) : 2,
+            !tag.contains("AllowExploration") || tag.getBooleanOr("AllowExploration", false),
+            tag.getBooleanOr("RequireDelivery", false));
     }
 
     private static String bounded(String value, int max) {

@@ -330,8 +330,8 @@ public final class Plan {
         UUID planId = tag.hasUUID("PlanId") ? tag.getUUID("PlanId")
             : tag.hasUUID("planId") ? tag.getUUID("planId") : UUID.randomUUID();
         UUID goalId = tag.hasUUID("GoalId") ? tag.getUUID("GoalId") : null;
-        String command = tag.contains("OriginalCommand") ? tag.getString("OriginalCommand")
-            : tag.getString("originalCommand");
+        String command = tag.contains("OriginalCommand") ? tag.getStringOr("OriginalCommand", "")
+            : tag.getStringOr("originalCommand", "");
         UUID requestingPlayer = tag.hasUUID("RequestingPlayer") ? tag.getUUID("RequestingPlayer")
             : tag.hasUUID("requestingPlayer") ? tag.getUUID("requestingPlayer") : null;
         UUID steveUuid = tag.hasUUID("SteveUuid") ? tag.getUUID("SteveUuid")
@@ -343,45 +343,45 @@ public final class Plan {
             readInt(tag, "TimeoutTicks", "timeoutTicks", 0),
             readLong(tag, "CreatedAtTick", "createdAtTick", 0L));
 
-        plan.state = readState(tag.contains("State") ? tag.getString("State") : tag.getString("state"));
+        plan.state = readState(tag.contains("State") ? tag.getStringOr("State", "") : tag.getStringOr("state", ""));
         plan.currentTaskIndex = bounded(readInt(tag, "CurrentTaskIndex", "currentTaskIndex", 0));
         plan.attemptCount = bounded(readInt(tag, "AttemptCount", "attemptCount", 0));
         plan.replanCount = bounded(readInt(tag, "ReplanCount", "replanCount", 0));
         plan.llmCallCount = bounded(readInt(tag, "LlmCallCount", "llmCallCount", 0));
-        plan.revision = bounded(tag.getInt("Revision"));
+        plan.revision = bounded(tag.getIntOr("Revision", 0));
         plan.lastProgressTick = Math.max(plan.createdAtTick,
             readLong(tag, "LastProgressTick", "lastProgressTick", plan.createdAtTick));
         plan.failureReason = tag.contains("FailureReason")
-            ? bounded(tag.getString("FailureReason"), MAX_REASON_LENGTH) : null;
+            ? bounded(tag.getStringOr("FailureReason", ""), MAX_REASON_LENGTH) : null;
         plan.summary = tag.contains("Summary")
-            ? bounded(tag.getString("Summary"), MAX_SUMMARY_LENGTH) : null;
+            ? bounded(tag.getStringOr("Summary", ""), MAX_SUMMARY_LENGTH) : null;
         plan.replanReason = tag.contains("ReplanReason")
-            ? bounded(tag.getString("ReplanReason"), MAX_REASON_LENGTH) : null;
+            ? bounded(tag.getStringOr("ReplanReason", ""), MAX_REASON_LENGTH) : null;
 
-        if (tag.contains("CompletedStepSummaries", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("CompletedStepSummaries", Tag.TAG_COMPOUND);
+        if (tag.contains("CompletedStepSummaries")) {
+            ListTag list = tag.getListOrEmpty("CompletedStepSummaries");
             for (int i = 0; i < Math.min(MAX_COMPLETED_STEP_SUMMARIES, list.size()); i++) {
-                plan.completedStepSummaries.add(loadSummary(list.getCompound(i)));
+                plan.completedStepSummaries.add(loadSummary(list.getCompoundOrEmpty(i)));
             }
         }
-        if (tag.contains("Steps", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("Steps", Tag.TAG_COMPOUND);
+        if (tag.contains("Steps")) {
+            ListTag list = tag.getListOrEmpty("Steps");
             for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
-                plan.steps.add(PlanStep.load(list.getCompound(i)));
+                plan.steps.add(PlanStep.load(list.getCompoundOrEmpty(i)));
             }
-        } else if (tag.contains("tasks", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("tasks", Tag.TAG_COMPOUND);
+        } else if (tag.contains("tasks")) {
+            ListTag list = tag.getListOrEmpty("tasks");
             for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
-                CompoundTag item = list.getCompound(i);
-                plan.steps.add(new PlanStep(new Task(bounded(item.getString("action"), 128),
-                    parseMap(item.getString("parameters")))));
+                CompoundTag item = list.getCompoundOrEmpty(i);
+                plan.steps.add(new PlanStep(new Task(bounded(item.getStringOr("action", ""), 128),
+                    parseMap(item.getStringOr("parameters", "")))));
             }
-        } else if (tag.contains("Tasks", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("Tasks", Tag.TAG_COMPOUND);
+        } else if (tag.contains("Tasks")) {
+            ListTag list = tag.getListOrEmpty("Tasks");
             for (int i = 0; i < Math.min(MAX_STEPS, list.size()); i++) {
-                CompoundTag item = list.getCompound(i);
-                plan.steps.add(new PlanStep(new Task(bounded(item.getString("Action"), 128),
-                    parseMap(item.getString("Parameters")))));
+                CompoundTag item = list.getCompoundOrEmpty(i);
+                plan.steps.add(new PlanStep(new Task(bounded(item.getStringOr("Action", ""), 128),
+                    parseMap(item.getStringOr("Parameters", "")))));
             }
         }
         plan.currentTaskIndex = Math.min(plan.currentTaskIndex, plan.steps.size());
@@ -419,13 +419,13 @@ public final class Plan {
     private static CompletedStepSummary loadSummary(CompoundTag tag) {
         return new CompletedStepSummary(
             tag.hasUUID("StepId") ? tag.getUUID("StepId") : null,
-            tag.getString("Action"),
-            readStepStatus(tag.getString("Status")),
-            tag.getInt("Attempts"),
-            tag.getBoolean("Success"),
-            tag.contains("ErrorCode") ? tag.getString("ErrorCode") : null,
-            tag.getString("Message"),
-            tag.getLong("UpdatedAt"));
+            tag.getStringOr("Action", ""),
+            readStepStatus(tag.getStringOr("Status", "")),
+            tag.getIntOr("Attempts", 0),
+            tag.getBooleanOr("Success", false),
+            tag.contains("ErrorCode") ? tag.getStringOr("ErrorCode", "") : null,
+            tag.getStringOr("Message", ""),
+            tag.getLongOr("UpdatedAt", 0L));
     }
 
     private static Map<String, Object> parseMap(String json) {

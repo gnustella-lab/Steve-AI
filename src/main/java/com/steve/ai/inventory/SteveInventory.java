@@ -264,14 +264,14 @@ public final class SteveInventory {
     }
 
     public ItemStack getArmor(EquipmentSlot slot) {
-        if (slot.getType() != EquipmentSlot.Type.ARMOR) {
+        if (!slot.isArmor()) {
             throw new IllegalArgumentException("Not an armor slot: " + slot);
         }
         return equipment.get(slot);
     }
 
     public void setArmor(EquipmentSlot slot, ItemStack stack) {
-        if (slot.getType() != EquipmentSlot.Type.ARMOR) {
+        if (!slot.isArmor()) {
             throw new IllegalArgumentException("Not an armor slot: " + slot);
         }
         equip(slot, stack);
@@ -532,7 +532,7 @@ public final class SteveInventory {
         if (tag == null || tag.isEmpty()) {
             return;
         }
-        int savedSize = tag.contains("Size") ? tag.getInt("Size") : contents.size();
+        int savedSize = tag.contains("Size") ? tag.getIntOr("Size", 0) : contents.size();
         int targetSize = Math.max(contents.size(), Math.min(MAX_PERSISTED_SLOTS, savedSize));
         NonNullList<ItemStack> restored = NonNullList.withSize(targetSize, ItemStack.EMPTY);
         ValueInput itemInput = TagValueInput.create(ProblemReporter.DISCARDING, null, tag);
@@ -543,8 +543,8 @@ public final class SteveInventory {
             equipment.put(slot, ItemStack.EMPTY);
         }
 
-        if (tag.contains("Equipment", CompoundTag.TAG_COMPOUND)) {
-            CompoundTag equipmentTag = tag.getCompound("Equipment");
+        if (tag.contains("Equipment")) {
+            CompoundTag equipmentTag = tag.getCompoundOrEmpty("Equipment");
             for (EquipmentSlot slot : EquipmentSlot.values()) {
                 if (equipmentTag.contains(slot.getName(), CompoundTag.TAG_COMPOUND)) {
                     Tag stackTag = equipmentTag.get(slot.getName());

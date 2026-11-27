@@ -147,7 +147,7 @@ public class SteveEntity extends PathfinderMob {
         inventory.setMainHandItem(this.getMainHandItem());
         inventory.setOffhandItem(this.getOffhandItem());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            if (slot.getType() == EquipmentSlot.Type.ARMOR) {
+            if (slot.isArmor()) {
                 inventory.setArmor(slot, this.getItemBySlot(slot));
             }
         }
@@ -161,7 +161,7 @@ public class SteveEntity extends PathfinderMob {
         this.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, inventory.getMainHandItem());
         this.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, inventory.getOffhandItem());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            if (slot.getType() == EquipmentSlot.Type.ARMOR) {
+            if (slot.isArmor()) {
                 this.setItemSlot(slot, inventory.getArmor(slot));
             }
         }
@@ -249,20 +249,20 @@ public class SteveEntity extends PathfinderMob {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         if (tag.contains("SteveName")) {
-            this.setSteveName(tag.getString("SteveName"));
+            this.setSteveName(tag.getStringOr("SteveName", ""));
         }
         
         if (tag.contains("Memory")) {
-            this.memory.loadFromNBT(tag.getCompound("Memory"));
+            this.memory.loadFromNBT(tag.getCompoundOrEmpty("Memory"));
         }
-        if (tag.contains("SteveInventory", Tag.TAG_COMPOUND)) {
-            inventory.load(tag.getCompound("SteveInventory"));
+        if (tag.contains("SteveInventory")) {
+            inventory.load(tag.getCompoundOrEmpty("SteveInventory"));
             // SteveInventory is the persisted source of truth. Restore vanilla equipment now,
             // before the periodic entity-to-inventory sync can overwrite loaded tools/armor.
             syncEquipmentFromInventory();
         }
-        if (tag.contains("AccessProfile", Tag.TAG_COMPOUND)) {
-            accessProfile.load(tag.getCompound("AccessProfile"));
+        if (tag.contains("AccessProfile")) {
+            accessProfile.load(tag.getCompoundOrEmpty("AccessProfile"));
         }
 
         // Flight/build invulnerability are transient runtime scopes. Old saves may contain
@@ -271,10 +271,9 @@ public class SteveEntity extends PathfinderMob {
         this.isFlying = false;
         this.invulnerabilityScopes.clear();
         this.setNoGravity(false);
-        this.setInvulnerable(false);
+        this.setPermanentlyInvulnerable(false);
     }
 
-    @Override
     protected void pickUpItem(ItemEntity itemEntity) {
         if (level().isClientSide() || itemEntity == null || itemEntity.isRemoved()) {
             return;
@@ -296,12 +295,10 @@ public class SteveEntity extends PathfinderMob {
         }
     }
 
-    @Override
     public boolean canHoldItem(ItemStack stack) {
         return inventory.canInsert(stack);
     }
 
-    @Override
     public boolean wantsToPickUp(ItemStack stack) {
         return inventory.canInsert(stack);
     }
@@ -468,9 +465,8 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    protected void dropCustomDeathLoot(DamageSource source,
-            int looting, boolean recentlyHit) {
-        super.dropCustomDeathLoot(source, looting, recentlyHit);
+    public void die(DamageSource source) {
+        super.die(source);
         dropInventoryContents();
     }
 
@@ -487,7 +483,7 @@ public class SteveEntity extends PathfinderMob {
             return false;
         }
         for (ItemStack stack : inventory.drainAll()) {
-            spawnAtLocation(stack);
+            spawnAtLocation(serverLevel, stack);
         }
         return true;
     }
@@ -531,15 +527,15 @@ public class SteveEntity extends PathfinderMob {
 
     /** Clears vanilla post-damage invulnerability (used by runtime policy and tests). */
     public void clearInvulnerableTime() {
-        this.invulnerableTime = 0;
+        this.setInvulnerableTime(0);
     }
     public boolean isBuildingInvulnerable() {
         return invulnerabilityScopes.contains(InvulnerabilityScopes.BUILDING);
     }
 
     @Override
-    public boolean isInvulnerableTo(DamageSource source) {
-        return invulnerabilityScopes.isActive() || super.isInvulnerableTo(source);
+    public boolean isInvulnerableTo(net.minecraft.server.level.ServerLevel level, DamageSource source) {
+        return invulnerabilityScopes.isActive() || super.isInvulnerableTo(level, source);
     }
 
     /** Performs a policy-checked teleport without loading chunks or crossing protected regions. */
@@ -574,7 +570,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    public boolean causeFallDamage(float distance, float damageMultiplier, DamageSource source) {
+    public boolean causeFallDamage(double distance, float damageMultiplier, DamageSource source) {
         // No fall damage when flying
         if (this.isFlying) {
             return false;
