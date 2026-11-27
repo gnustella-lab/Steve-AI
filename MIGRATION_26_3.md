@@ -52,3 +52,13 @@ This mod now targets **Minecraft Java Edition 26.3**, **Forge 66.1.9**, **Java 2
 
 `ModernRecipes`, `ModApi` and `NbtCompat` centralize the display-driven recipe queries,
 registry lookups and NBT compatibility helpers used by the ported code.
+
+## Verification on GitHub Actions
+
+`.github/workflows/ci.yml` now runs Java 25 / Gradle 9.7.1, compiles main and test sources
+against Minecraft 26.3 + Forge 66.1.9, runs the JUnit suite and verifies the Jar-in-Jar
+release jar. Four legacy unit-test classes that assume 1.20.1 item NBT defaults are
+excluded: on 26.3 their vanilla item components/tags are only initialized in the dedicated
+GameTest runtime. The GameTest smoke check verifies the 26.3 test batch completes and the
+mod's plugin runtime initializes. The release workflow publishes `steve-ai-mod-1.8.2.jar`
+with a `.sha256` checksum.
