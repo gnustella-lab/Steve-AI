@@ -23,7 +23,8 @@ public final class TestBootstrap {
         Bootstrap.bootStrap();
         try {
             for (DataComponentInitializers.PendingComponents<?> pending
-                    : BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(RegistryAccess.EMPTY)) {
+                    : BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(
+                        RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY))) {
                 pending.apply();
             }
         } catch (RuntimeException ignored) {
