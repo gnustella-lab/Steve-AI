@@ -533,7 +533,8 @@ public final class SteveInventory {
         int savedSize = tag.contains("Size") ? tag.getIntOr("Size", 0) : contents.size();
         int targetSize = Math.max(contents.size(), Math.min(MAX_PERSISTED_SLOTS, savedSize));
         NonNullList<ItemStack> restored = NonNullList.withSize(targetSize, ItemStack.EMPTY);
-        ValueInput itemInput = TagValueInput.create(ProblemReporter.DISCARDING, null, tag);
+        ValueInput itemInput = TagValueInput.create(ProblemReporter.DISCARDING,
+            net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY), tag);
         ContainerHelper.loadAllItems(itemInput, restored);
         contents = restored;
 
@@ -606,9 +607,11 @@ public final class SteveInventory {
         if (stack.getComponents().get(DataComponents.ATTRIBUTE_MODIFIERS) == null) {
             String path = itemPath(stack);
             if (attribute == Attributes.ATTACK_DAMAGE) {
-                if (path.contains("sword")) return 4.0D;
-                if (path.contains("axe")) return 3.0D;
-                if (path.contains("pickaxe")) return 2.0D;
+                double material = path.contains("diamond") ? 3.0D
+                    : path.contains("iron") ? 2.0D : path.contains("stone") ? 1.0D : 0.0D;
+                if (path.contains("sword")) return 4.0D + material;
+                if (path.contains("axe")) return 3.0D + material;
+                if (path.contains("pickaxe")) return 2.0D + material;
                 return 0.0D;
             }
             if (attribute == Attributes.ARMOR) {

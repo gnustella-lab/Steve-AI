@@ -1,5 +1,6 @@
 package com.steve.ai.util;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
@@ -37,6 +38,7 @@ public final class NbtCompat {
     }
 
     public static void loadEntity(Entity entity, CompoundTag tag) {
-        entity.load(TagValueInput.create(ProblemReporter.DISCARDING, null, tag));
+        entity.load(TagValueInput.create(ProblemReporter.DISCARDING,
+            net.minecraft.core.RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY), tag));
     }
 }
