@@ -62,6 +62,7 @@ public class SteveMod {
         context.registerConfig(ModConfig.Type.COMMON, SteveConfig.SPEC);
 
         FMLCommonSetupEvent.getBus(modBusGroup).addListener(this::commonSetup);
+        net.minecraftforge.registries.RegisterEvent.getBus(modBusGroup).addListener(this::registerGameTests);
         EntityAttributeCreationEvent.BUS.addListener(this::entityAttributes);
         RegisterCommandsEvent.BUS.addListener(this::onCommandRegister);
         ServerStoppedEvent.BUS.addListener(this::onServerStopped);
@@ -77,6 +78,23 @@ public class SteveMod {
             serviceContainer = services;
             PluginManager.getInstance().loadPlugins(ActionRegistry.getInstance(), services);
         });
+    }
+
+    /** Registers annotated GameTest functions with the 26.3 test-function registry. */
+    private void registerGameTests(net.minecraftforge.registries.RegisterEvent event) {
+        if (event.getRegistryKey() != net.minecraft.core.registries.Registries.TEST_FUNCTION) {
+            return;
+        }
+        for (Class<?> testClass : new Class<?>[]{
+                com.steve.ai.gametest.SteveGameTests.class,
+                com.steve.ai.gametest.LocalAutonomyGameTests.class,
+                com.steve.ai.gametest.MiningSearchGameTests.class,
+                com.steve.ai.gametest.SurvivalCraftGameTests.class,
+                com.steve.ai.gametest.CompoundLocalGameTests.class}) {
+            net.minecraftforge.gametest.ForgeGameTestHooks.gatherTests(testClass, null)
+                .forEach((id, reference) -> event.register(
+                    net.minecraft.core.registries.Registries.TEST_FUNCTION, id, reference::consumer));
+        }
     }
 
     private void entityAttributes(EntityAttributeCreationEvent event) {
