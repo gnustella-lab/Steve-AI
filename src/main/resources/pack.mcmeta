@@ -1,9 +1,7 @@
 {
   "pack": {
     "description": "Steve AI Mod Resources",
-    "pack_format": 15,
-    "forge:resource_pack_format": 15,
-    "forge:data_pack_format": 12
+    "max_format": 121,
+    "min_format": 121
   }
 }
-

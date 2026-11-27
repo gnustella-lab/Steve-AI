@@ -2,7 +2,7 @@ package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -81,7 +81,7 @@ public class CraftingPlanner {
         }
 
         // Find the target recipe
-        Recipe<?> targetRecipe = findRecipeForItem(level, targetItem, inventory);
+        var targetRecipe = findRecipeForItem(level, targetItem, inventory);
         if (targetRecipe == null) {
             return new CraftPlan(targetItem, targetQuantity, List.of(), List.of(),
                 false, "No recipe found for: " + targetItem);
@@ -97,7 +97,7 @@ public class CraftingPlanner {
         // Table creation consumes real planks too. Include their producer even for
         // recipes (e.g. furnaces) whose own ingredients contain no wood.
         if (inventory.count(Items.CRAFTING_TABLE) == 0 && recipeMap.values().stream()
-                .anyMatch(recipe -> !recipe.canCraftInDimensions(2, 2))) {
+                .anyMatch(recipe -> com.steve.ai.crafting.ModernRecipes.needsCraftingTable(recipe))) {
             collectRelevantRecipes(level, "minecraft:oak_planks", graph, recipeMap,
                 new java.util.HashSet<>(), inventory);
         }
@@ -127,7 +127,7 @@ public class CraftingPlanner {
                 node.resultCount(),
                 timesToCraft,
                 node.ingredients(),
-                !recipe.canCraftInDimensions(2, 2)
+                com.steve.ai.crafting.ModernRecipes.needsCraftingTable(recipe)
             ));
         }
 
@@ -141,22 +141,20 @@ public class CraftingPlanner {
             achievable, failureReason);
     }
 
-    private static Recipe<?> findRecipeForItem(ServerLevel level, String itemName, SteveInventory inventory) {
+    private static net.minecraft.world.item.crafting.RecipeHolder<?> findRecipeForItem(ServerLevel level, String itemName, SteveInventory inventory) {
         var recipeManager = level.getServer().getRecipeManager();
         var recipes = recipeManager.getRecipes();
-        var target = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
-            net.minecraft.resources.ResourceLocation.tryParse(
-                itemName.contains(":") ? itemName : "minecraft:" + itemName
-            )
-        );
+        var target = com.steve.ai.util.ModApi.item(net.minecraft.resources.Identifier.tryParse(
+                itemName.contains(":") ? itemName : "minecraft:" + itemName));
         if (target == null || target == net.minecraft.world.item.Items.AIR) {
             return null;
         }
 
-        Recipe<?> best = null;
+        net.minecraft.world.item.crafting.RecipeHolder<?> best = null;
         int bestMissing = Integer.MAX_VALUE;
-        for (Recipe<?> recipe : recipes) {
-            if (!recipe.getResultItem(level.registryAccess()).is(target)) {
+        for (var holder : recipes) {
+            Recipe<?> recipe = holder.value();
+            if (!com.steve.ai.crafting.ModernRecipes.resultOf(recipe).is(target)) {
                 continue;
             }
             int missing = missingIngredientKinds(recipe, inventory);
@@ -164,7 +162,7 @@ public class CraftingPlanner {
             int score = missing * 100 + preference;
             if (score < bestMissing) {
                 bestMissing = score;
-                best = recipe;
+                best = holder;
                 if (score == 0) {
                     break;
                 }
@@ -175,13 +173,13 @@ public class CraftingPlanner {
 
     private static int missingIngredientKinds(Recipe<?> recipe, SteveInventory inventory) {
         int missing = 0;
-        for (var ingredient : recipe.getIngredients()) {
+        for (var ingredient : com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe)) {
             if (ingredient.isEmpty()) {
                 continue;
             }
             boolean have = false;
             if (inventory != null) {
-                for (ItemStack stack : ingredient.getItems()) {
+                for (ItemStack stack : com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient)) {
                     if (!stack.isEmpty() && inventory.count(stack.getItem()) > 0) {
                         have = true;
                         break;
@@ -197,15 +195,15 @@ public class CraftingPlanner {
 
     private static int overworldPreference(Recipe<?> recipe) {
         int best = 20;
-        for (var ingredient : recipe.getIngredients()) {
+        for (var ingredient : com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe)) {
             if (ingredient.isEmpty()) {
                 continue;
             }
-            for (ItemStack stack : ingredient.getItems()) {
+            for (ItemStack stack : com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient)) {
                 if (stack.isEmpty()) {
                     continue;
                 }
-                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 String id = key == null ? "" : key.toString();
                 if (id.equals("minecraft:oak_planks") || id.equals("minecraft:oak_log")
                         || id.equals("minecraft:stick")) {
@@ -234,33 +232,34 @@ public class CraftingPlanner {
         if (visited.contains(targetItem)) return;
         visited.add(targetItem);
 
-        Recipe<?> recipe = findRecipeForItem(level, targetItem, inventory);
-        if (recipe == null) return;
+        var recipeHolder = findRecipeForItem(level, targetItem, inventory);
+        if (recipeHolder == null) return;
+        Recipe<?> recipe = recipeHolder.value();
 
-        String recipeId = recipe.getId().toString();
+        String recipeId = recipeHolder.id().toString();
         if (recipeMap.containsKey(recipeId)) return;
 
-        recipeMap.put(recipeId, recipe);
+        recipeMap.put(recipeId, recipeHolder.value());
 
         // Add to graph
         List<IngredientResolver.IngredientQuantity> ingredients = new ArrayList<>();
-        for (var ingredient : recipe.getIngredients()) {
+        for (var ingredient : com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe)) {
             if (!ingredient.isEmpty()) {
                 ingredients.add(new IngredientResolver.IngredientQuantity(ingredient, 1));
             }
         }
 
         String resultItem = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
-            recipe.getResultItem(level.registryAccess()).getItem()).toString();
-        int resultCount = recipe.getResultItem(level.registryAccess()).getCount();
+            com.steve.ai.crafting.ModernRecipes.resultOf(recipe).getItem()).toString();
+        int resultCount = com.steve.ai.crafting.ModernRecipes.resultOf(recipe).getCount();
 
         graph.addRecipe(recipeId, recipe.getType(), ingredients, resultItem, resultCount);
 
         // Recursively collect recipes even when some matching inventory is present. A single
         // existing ingredient must not hide a dependency needed for a larger requested quantity.
-        for (var ingredient : recipe.getIngredients()) {
+        for (var ingredient : com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe)) {
             if (ingredient.isEmpty()) continue;
-            for (var item : ingredient.getItems()) {
+            for (var item : com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient)) {
                 String itemName = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
                     item.getItem()).toString();
                 if (findRecipeForItem(level, itemName, inventory) != null) {
@@ -273,9 +272,9 @@ public class CraftingPlanner {
 
     private static String resolveIngredientName(net.minecraft.world.item.crafting.Ingredient ingredient) {
         if (ingredient == null || ingredient.isEmpty()) return "unknown";
-        ItemStack[] items = ingredient.getItems();
-        if (items.length == 0) return "unknown";
-        ResourceLocation key = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        List<ItemStack> items = com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient);
+        if (items.isEmpty()) return "unknown";
+        Identifier key = BuiltInRegistries.ITEM.getKey(items.get(0).getItem());
         return key == null ? "unknown" : key.toString();
     }
 
@@ -341,7 +340,7 @@ public class CraftingPlanner {
         boolean needsTable = false;
         if (recipeMap != null) {
             for (Recipe<?> recipe : recipeMap.values()) {
-                if (recipe != null && !recipe.canCraftInDimensions(2, 2)) {
+                if (recipe != null && com.steve.ai.crafting.ModernRecipes.needsCraftingTable(recipe)) {
                     needsTable = true;
                     break;
                 }
@@ -412,7 +411,7 @@ public class CraftingPlanner {
             for (ItemStack stack : stacks) {
                 if (remaining <= 0) break;
                 if (stack.isEmpty()) continue;
-                ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 String id = key == null ? "" : key.toString();
                 if (!id.endsWith("_planks")) continue;
                 int taken = Math.min(stack.getCount(), remaining);

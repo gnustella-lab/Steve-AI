@@ -79,9 +79,9 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    protected void defineSynchedData() {
-        super.defineSynchedData();
-        this.entityData.define(STEVE_NAME, "Steve");
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(STEVE_NAME, "Steve");
     }
 
     @Override
@@ -95,7 +95,7 @@ public class SteveEntity extends PathfinderMob {
      * Dedicated servers with no nearby player skip mob ticks; Steves must keep working.
      */
     public void ensureServerTick() {
-        if (this.level().isClientSide || !this.isAlive() || this.isRemoved()) {
+        if (this.level().isClientSide() || !this.isAlive() || this.isRemoved()) {
             return;
         }
         if (lastAutonomyGameTime == this.level().getGameTime()) {
@@ -105,7 +105,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     private void tickAutonomyIfNeeded() {
-        if (this.level().isClientSide) {
+        if (this.level().isClientSide()) {
             return;
         }
         long now = this.level().getGameTime();
@@ -147,7 +147,7 @@ public class SteveEntity extends PathfinderMob {
         inventory.setMainHandItem(this.getMainHandItem());
         inventory.setOffhandItem(this.getOffhandItem());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            if (slot.getType() == EquipmentSlot.Type.ARMOR) {
+            if (slot.isArmor()) {
                 inventory.setArmor(slot, this.getItemBySlot(slot));
             }
         }
@@ -161,7 +161,7 @@ public class SteveEntity extends PathfinderMob {
         this.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, inventory.getMainHandItem());
         this.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, inventory.getOffhandItem());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            if (slot.getType() == EquipmentSlot.Type.ARMOR) {
+            if (slot.isArmor()) {
                 this.setItemSlot(slot, inventory.getArmor(slot));
             }
         }
@@ -231,8 +231,9 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag tag) {
-        super.addAdditionalSaveData(tag);
+    public void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        CompoundTag tag = new CompoundTag();
         tag.putString("SteveName", getSteveName());
         if (autonomyController != null) {
             autonomyController.prepareForSave();
@@ -243,26 +244,28 @@ public class SteveEntity extends PathfinderMob {
         tag.put("Memory", memoryTag);
         tag.put("SteveInventory", inventory.save());
         tag.put("AccessProfile", accessProfile.save());
+        output.store("SteveData", CompoundTag.CODEC, tag);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag tag) {
-        super.readAdditionalSaveData(tag);
+    public void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput input) {
+        super.readAdditionalSaveData(input);
+        CompoundTag tag = input.read("SteveData", CompoundTag.CODEC).orElse(new CompoundTag());
         if (tag.contains("SteveName")) {
-            this.setSteveName(tag.getString("SteveName"));
+            this.setSteveName(tag.getStringOr("SteveName", ""));
         }
         
         if (tag.contains("Memory")) {
-            this.memory.loadFromNBT(tag.getCompound("Memory"));
+            this.memory.loadFromNBT(tag.getCompoundOrEmpty("Memory"));
         }
-        if (tag.contains("SteveInventory", Tag.TAG_COMPOUND)) {
-            inventory.load(tag.getCompound("SteveInventory"));
+        if (tag.contains("SteveInventory")) {
+            inventory.load(tag.getCompoundOrEmpty("SteveInventory"));
             // SteveInventory is the persisted source of truth. Restore vanilla equipment now,
             // before the periodic entity-to-inventory sync can overwrite loaded tools/armor.
             syncEquipmentFromInventory();
         }
-        if (tag.contains("AccessProfile", Tag.TAG_COMPOUND)) {
-            accessProfile.load(tag.getCompound("AccessProfile"));
+        if (tag.contains("AccessProfile")) {
+            accessProfile.load(tag.getCompoundOrEmpty("AccessProfile"));
         }
 
         // Flight/build invulnerability are transient runtime scopes. Old saves may contain
@@ -271,12 +274,11 @@ public class SteveEntity extends PathfinderMob {
         this.isFlying = false;
         this.invulnerabilityScopes.clear();
         this.setNoGravity(false);
-        this.setInvulnerable(false);
+        this.setPermanentlyInvulnerable(false);
     }
 
-    @Override
     protected void pickUpItem(ItemEntity itemEntity) {
-        if (level().isClientSide || itemEntity == null || itemEntity.isRemoved()) {
+        if (level().isClientSide() || itemEntity == null || itemEntity.isRemoved()) {
             return;
         }
         ItemStack offered = itemEntity.getItem();
@@ -296,12 +298,10 @@ public class SteveEntity extends PathfinderMob {
         }
     }
 
-    @Override
     public boolean canHoldItem(ItemStack stack) {
         return inventory.canInsert(stack);
     }
 
-    @Override
     public boolean wantsToPickUp(ItemStack stack) {
         return inventory.canInsert(stack);
     }
@@ -333,7 +333,6 @@ public class SteveEntity extends PathfinderMob {
         if (!serverLevel.destroyBlock(position, false, this)) {
             return false;
         }
-        state.spawnAfterBreak(serverLevel, position, tool, true);
         applyToolWear(state, tool);
         for (ItemStack drop : drops) {
             ItemStack remainder = inventory.insert(drop);
@@ -356,11 +355,7 @@ public class SteveEntity extends PathfinderMob {
         }
         ItemStack entityHand = this.getMainHandItem();
         ItemStack target = entityHand.isDamageableItem() ? entityHand : tool;
-        try {
-            target.hurtAndBreak(1, this, item -> {});
-        } catch (Throwable ignored) {
-            target.setDamageValue(target.getDamageValue() + 1);
-        }
+        target.setDamageValue(target.getDamageValue() + 1);
         if (target.getDamageValue() >= target.getMaxDamage()) {
             target.shrink(1);
             if (target.isEmpty()) {
@@ -375,10 +370,8 @@ public class SteveEntity extends PathfinderMob {
     @Override
     @Nullable
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty,
-                                       MobSpawnType spawnType, @Nullable SpawnGroupData spawnData,
-                                       @Nullable CompoundTag tag) {
-        spawnData = super.finalizeSpawn(level, difficulty, spawnType, spawnData, tag);
-        return spawnData;
+                                       EntitySpawnReason spawnType, @Nullable SpawnGroupData spawnData) {
+        return super.finalizeSpawn(level, difficulty, spawnType, spawnData);
     }
 
     /**
@@ -387,7 +380,7 @@ public class SteveEntity extends PathfinderMob {
      * If nobody is available the message is logged; unrelated nearby players are never chosen.
      */
     public void sendFeedback(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        if (this.level().isClientSide() || message == null || message.isBlank()) return;
         if (!(level() instanceof ServerLevel serverLevel)) {
             SteveMod.LOGGER.info("Steve '{}' feedback: {}", getSteveName(), message);
             return;
@@ -433,7 +426,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     public void sendOwnerMessage(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()
+        if (this.level().isClientSide() || message == null || message.isBlank()
                 || !(level() instanceof ServerLevel serverLevel)) return;
         UUID ownerUuid = accessProfile.getOwnerUuid();
         Player owner = ownerUuid == null ? null : serverLevel.getPlayerByUUID(ownerUuid);
@@ -447,7 +440,7 @@ public class SteveEntity extends PathfinderMob {
 
     /** Broadcast is intentionally explicit and must never be the default feedback path. */
     public void broadcastMessage(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        if (this.level().isClientSide() || message == null || message.isBlank()) return;
         Component component = feedbackComponent(message);
         this.level().players().forEach(player -> player.sendSystemMessage(component));
     }
@@ -474,9 +467,8 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    protected void dropCustomDeathLoot(DamageSource source,
-            int looting, boolean recentlyHit) {
-        super.dropCustomDeathLoot(source, looting, recentlyHit);
+    public void die(DamageSource source) {
+        super.die(source);
         dropInventoryContents();
     }
 
@@ -493,7 +485,7 @@ public class SteveEntity extends PathfinderMob {
             return false;
         }
         for (ItemStack stack : inventory.drainAll()) {
-            spawnAtLocation(stack);
+            spawnAtLocation(serverLevel, stack);
         }
         return true;
     }
@@ -535,13 +527,17 @@ public class SteveEntity extends PathfinderMob {
         }
     }
 
+    /** Clears vanilla post-damage invulnerability (used by runtime policy and tests). */
+    public void clearInvulnerableTime() {
+        this.setInvulnerableTime(0);
+    }
     public boolean isBuildingInvulnerable() {
         return invulnerabilityScopes.contains(InvulnerabilityScopes.BUILDING);
     }
 
     @Override
-    public boolean isInvulnerableTo(DamageSource source) {
-        return invulnerabilityScopes.isActive() || super.isInvulnerableTo(source);
+    public boolean isInvulnerableTo(net.minecraft.server.level.ServerLevel level, DamageSource source) {
+        return invulnerabilityScopes.isActive() || super.isInvulnerableTo(level, source);
     }
 
     /** Performs a policy-checked teleport without loading chunks or crossing protected regions. */
@@ -556,7 +552,7 @@ public class SteveEntity extends PathfinderMob {
 
     @Override
     public void travel(net.minecraft.world.phys.Vec3 travelVector) {
-        if (this.isFlying && !this.level().isClientSide) {
+        if (this.isFlying && !this.level().isClientSide()) {
             double motionY = this.getDeltaMovement().y;
             
             if (this.getNavigation().isInProgress()) {
@@ -576,7 +572,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     @Override
-    public boolean causeFallDamage(float distance, float damageMultiplier, DamageSource source) {
+    public boolean causeFallDamage(double distance, float damageMultiplier, DamageSource source) {
         // No fall damage when flying
         if (this.isFlying) {
             return false;

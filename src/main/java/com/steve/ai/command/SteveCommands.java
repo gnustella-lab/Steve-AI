@@ -19,10 +19,18 @@ import java.util.UUID;
 
 public class SteveCommands {
     
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+        /** 26.3 replaced integer permission levels with named permissions; use operator status. */
+    private static boolean isAdmin(CommandSourceStack source) {
+        if (source.getPlayer() == null) {
+            return true; // server console and command blocks
+        }
+        return source.getServer().getPlayerList().isOp(
+            new net.minecraft.server.players.NameAndId(source.getPlayer().getGameProfile()));
+    }
+public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("steve")
             .then(Commands.literal("spawn")
-                .requires(source -> source.hasPermission(2))
+                .requires(SteveCommands::isAdmin)
                 .then(Commands.argument("name", StringArgumentType.string())
                     .executes(SteveCommands::spawnSteve)))
             .then(Commands.literal("remove")
@@ -251,7 +259,7 @@ public class SteveCommands {
     }
 
     private static boolean canControl(CommandSourceStack source, SteveEntity steve) {
-        boolean administrator = source.hasPermission(2);
+        boolean administrator = isAdmin(source);
         UUID playerUuid = source.getEntity() instanceof ServerPlayer player ? player.getUUID() : null;
         if (steve.canBeControlledBy(playerUuid, administrator)) {
             return true;

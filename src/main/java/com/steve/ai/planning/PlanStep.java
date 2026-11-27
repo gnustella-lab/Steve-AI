@@ -156,7 +156,7 @@ public final class PlanStep {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("DataVersion", DATA_VERSION);
-        tag.putUUID("StepId", stepId);
+        com.steve.ai.util.NbtCompat.putUUID(tag, "StepId", stepId);
         tag.putString("Action", bounded(task.getAction(), MAX_ACTION_LENGTH));
         tag.putString("Parameters", boundedJson(GSON.toJson(task.getParameters()), MAX_PARAMETERS_JSON_LENGTH));
         tag.putString("Status", status.name());
@@ -176,27 +176,27 @@ public final class PlanStep {
 
     public static PlanStep load(CompoundTag tag) {
         if (tag == null || tag.isEmpty()) return new PlanStep(new Task("", Map.of()));
-        String action = bounded(tag.getString("Action"), MAX_ACTION_LENGTH);
-        Map<String, Object> parameters = parseMap(tag.getString("Parameters"));
-        ActionResult result = tag.contains("Result", Tag.TAG_COMPOUND)
-            ? loadResult(tag.getCompound("Result")) : null;
-        Status status = readStatus(tag.getString("Status"));
+        String action = bounded(tag.getStringOr("Action", ""), MAX_ACTION_LENGTH);
+        Map<String, Object> parameters = parseMap(tag.getStringOr("Parameters", ""));
+        ActionResult result = tag.contains("Result")
+            ? loadResult(tag.getCompoundOrEmpty("Result")) : null;
+        Status status = readStatus(tag.getStringOr("Status", ""));
         List<AttemptResult> history = new ArrayList<>();
-        if (tag.contains("AttemptHistory", Tag.TAG_LIST)) {
-            ListTag list = tag.getList("AttemptHistory", Tag.TAG_COMPOUND);
+        if (tag.contains("AttemptHistory")) {
+            ListTag list = tag.getListOrEmpty("AttemptHistory");
             for (int i = 0; i < Math.min(MAX_ATTEMPT_HISTORY, list.size()); i++) {
-                history.add(loadAttempt(list.getCompound(i)));
+                history.add(loadAttempt(list.getCompoundOrEmpty(i)));
             }
         }
         return new PlanStep(
-            tag.hasUUID("StepId") ? tag.getUUID("StepId") : UUID.randomUUID(),
+            com.steve.ai.util.NbtCompat.hasUUID(tag, "StepId") ? com.steve.ai.util.NbtCompat.getUUID(tag, "StepId").orElse(null) : UUID.randomUUID(),
             new Task(action, parameters),
             status,
-            tag.getInt("Attempts"),
+            tag.getIntOr("Attempts", 0),
             result,
-            tag.getLong("UpdatedAt"),
-            tag.getLong("StartedAt"),
-            tag.getLong("LastAttemptAt"),
+            tag.getLongOr("UpdatedAt", 0L),
+            tag.getLongOr("StartedAt", 0L),
+            tag.getLongOr("LastAttemptAt", 0L),
             history);
     }
 
@@ -221,9 +221,9 @@ public final class PlanStep {
     }
 
     private static AttemptResult loadAttempt(CompoundTag tag) {
-        return new AttemptResult(tag.getInt("Attempt"), readStatus(tag.getString("Status")),
-            tag.getBoolean("Success"), tag.getString("ErrorCode"), tag.getString("Message"),
-            tag.getLong("Tick"));
+        return new AttemptResult(tag.getIntOr("Attempt", 0), readStatus(tag.getStringOr("Status", "")),
+            tag.getBooleanOr("Success", false), tag.getStringOr("ErrorCode", ""), tag.getStringOr("Message", ""),
+            tag.getLongOr("Tick", 0L));
     }
 
     private static CompoundTag saveResult(ActionResult result) {
@@ -242,15 +242,15 @@ public final class PlanStep {
 
     private static ActionResult loadResult(CompoundTag tag) {
         ActionResult.Builder builder = ActionResult.builder()
-            .success(tag.getBoolean("Success"))
-            .partialSuccess(tag.getBoolean("PartialSuccess"))
-            .retryable(tag.getBoolean("Retryable"))
-            .requiresReplanning(tag.getBoolean("RequiresReplanning"))
-            .message(bounded(tag.getString("Message"), MAX_RESULT_MESSAGE_LENGTH));
+            .success(tag.getBooleanOr("Success", false))
+            .partialSuccess(tag.getBooleanOr("PartialSuccess", false))
+            .retryable(tag.getBooleanOr("Retryable", false))
+            .requiresReplanning(tag.getBooleanOr("RequiresReplanning", false))
+            .message(bounded(tag.getStringOr("Message", ""), MAX_RESULT_MESSAGE_LENGTH));
         if (tag.contains("ErrorCode")) {
-            builder.errorCode(bounded(tag.getString("ErrorCode"), MAX_ERROR_CODE_LENGTH));
+            builder.errorCode(bounded(tag.getStringOr("ErrorCode", ""), MAX_ERROR_CODE_LENGTH));
         }
-        Map<String, Object> observations = parseMap(tag.getString("Observations"));
+        Map<String, Object> observations = parseMap(tag.getStringOr("Observations", ""));
         if (!observations.isEmpty()) builder.observations(observations);
         return builder.build();
     }

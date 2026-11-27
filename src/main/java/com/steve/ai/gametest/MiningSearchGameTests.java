@@ -6,21 +6,21 @@ import com.steve.ai.action.Task;
 import com.steve.ai.action.actions.GatherResourceAction;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
+import net.minecraftforge.gametest.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 import java.util.Map;
 
-@GameTestHolder("steve_search")
-@PrefixGameTestTemplate(false)
+@GameTestNamespace("steve_search")
+@GameTestDontPrefix
 public final class MiningSearchGameTests {
-    @GameTest(templateNamespace = "steve_search", template = "empty", timeoutTicks = 20)
+    @GameTest(structure = "steve_search:empty", maxTicks = 20)
     public static void targetOutsideLocalRadiusIsNotChased(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
-        steve.moveTo(origin, 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(origin));
         BlockPos distant = origin.east(9);
         helper.getLevel().setBlock(distant, Blocks.STRIPPED_BIRCH_LOG.defaultBlockState(), 3);
         GatherResourceAction action = new GatherResourceAction(steve,
@@ -35,11 +35,11 @@ public final class MiningSearchGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "steve_search", template = "empty", timeoutTicks = 20)
+    @GameTest(structure = "steve_search:empty", maxTicks = 20)
     public static void absentResourceStopsWithoutExcavating(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         BlockPos origin = helper.absolutePos(new BlockPos(1, 2, 1));
-        steve.moveTo(origin, 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(origin));
         // Do not add the entity: drive only the action, not unrelated autonomy ticks.
         helper.getLevel().setBlock(origin, Blocks.DIRT.defaultBlockState(), 3);
         GatherResourceAction action = new GatherResourceAction(steve,

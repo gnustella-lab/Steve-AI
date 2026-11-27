@@ -8,7 +8,7 @@ import com.steve.ai.security.PermissionManager;
 import com.steve.ai.security.AgentCapability;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -162,7 +162,7 @@ public class PlaceBlockAction extends BaseAction {
         if (!blockName.contains(":")) {
             blockName = "minecraft:" + blockName;
         }
-        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
-        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+        Identifier resourceLocation = Identifier.tryParse(blockName);
+        return resourceLocation != null ? com.steve.ai.util.ModApi.block(resourceLocation) : Blocks.AIR;
     }
 }

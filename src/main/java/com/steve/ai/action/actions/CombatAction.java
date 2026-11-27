@@ -120,10 +120,10 @@ public class CombatAction extends BaseAction {
             // Attack 3 times per second (every 6-7 ticks)
             if (ticksRunning % 7 == 0) {
                 UUID targetId = target.getUUID();
-                if (steve.doHurtTarget(target)) {
+                if (steve.doHurtTarget((net.minecraft.server.level.ServerLevel) steve.level(), target)) {
                     engagedTargets.add(targetId);
                 }
-                steve.swing(net.minecraft.world.InteractionHand.MAIN_HAND, true);
+                steve.swing(net.minecraft.world.InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
 
                 if (!target.isAlive() && engagedTargets.contains(targetId) && countedKills.add(targetId)) {
                     targetsKilled++;

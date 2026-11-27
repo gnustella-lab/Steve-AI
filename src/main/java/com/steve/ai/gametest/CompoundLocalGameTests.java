@@ -4,21 +4,21 @@ import com.steve.ai.SteveMod;
 import com.steve.ai.autonomy.GoalStatus;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
+import net.minecraftforge.gametest.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraftforge.gametest.GameTestHolder;
-import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.gametest.GameTestNamespace;
+import net.minecraftforge.gametest.GameTestDontPrefix;
 
-@GameTestHolder("steve_compound")
-@PrefixGameTestTemplate(false)
+@GameTestNamespace("steve_compound")
+@GameTestDontPrefix
 public final class CompoundLocalGameTests {
-    @GameTest(templateNamespace = "steve_compound", template = "empty", timeoutTicks = 400)
+    @GameTest(structure = "steve_compound:empty", maxTicks = 400)
     public static void craftsInOrderAndRecountsSecondTarget(GameTestHelper helper) {
         SteveEntity steve = new SteveEntity(SteveMod.STEVE_ENTITY.get(), helper.getLevel());
         steve.setSteveName("Compound");
-        steve.moveTo(helper.absolutePos(new BlockPos(1, 2, 1)), 0, 0);
+        steve.setPos(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(new BlockPos(1, 2, 1))));
         steve.setPersistenceRequired();
         steve.getAutonomyController().setPlanner(context -> {
             throw new AssertionError("Compound must never call LLM");

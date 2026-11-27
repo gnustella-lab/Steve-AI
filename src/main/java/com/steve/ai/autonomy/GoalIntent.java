@@ -82,10 +82,10 @@ public final class GoalIntent {
             return new GoalIntent("");
         }
         return new GoalIntent(
-            tag.getString("Description"),
-            tag.getString("Kind"),
-            tag.getString("Target"),
-            tag.getInt("TargetQuantity"));
+            tag.getStringOr("Description", ""),
+            tag.getStringOr("Kind", ""),
+            tag.getStringOr("Target", ""),
+            tag.getIntOr("TargetQuantity", 0));
     }
 
     private static int bounded(int value) {

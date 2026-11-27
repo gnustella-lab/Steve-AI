@@ -4,7 +4,7 @@ import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -46,7 +46,7 @@ public class ConsumeItemAction extends BaseAction {
             return;
         }
 
-        if (!targetItem.isEdible() || targetItem.getFoodProperties() == null) {
+        if (!targetItem.getDefaultInstance().has(net.minecraft.core.component.DataComponents.FOOD) || targetItem.getDefaultInstance().get(net.minecraft.core.component.DataComponents.FOOD) == null) {
             result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
                 itemName + " is not edible").build();
             return;
@@ -56,7 +56,7 @@ public class ConsumeItemAction extends BaseAction {
             return;
         }
 
-        int nutrition = targetItem.getFoodProperties().getNutrition();
+        int nutrition = targetItem.getDefaultInstance().get(net.minecraft.core.component.DataComponents.FOOD).nutrition();
         float healthBefore = steve.getHealth();
         steve.heal(Math.max(1.0F, nutrition / 2.0F));
         result = ActionResult.success("Consumed " + itemName)
@@ -80,7 +80,7 @@ public class ConsumeItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

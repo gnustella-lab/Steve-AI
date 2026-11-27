@@ -7,7 +7,7 @@ import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -236,7 +236,7 @@ public class SmeltItemAction extends BaseAction {
         if (recipe == null) {
             return 0;
         }
-        Ingredient input = recipe.getIngredients().isEmpty() ? null : recipe.getIngredients().get(0);
+        Ingredient input = com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe).isEmpty() ? null : com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe).get(0);
         if (input == null) {
             return 0;
         }
@@ -328,7 +328,7 @@ public class SmeltItemAction extends BaseAction {
                 for (int z = -2; z <= 2; z++) {
                     BlockPos pos = stevePos.offset(x, y, z);
                     if (level.getBlockState(pos).isAir()
-                            && level.getBlockState(pos.below()).isSolidRender(level, pos.below())) {
+                            && level.getBlockState(pos.below()).isSolidRender()) {
                         if (PermissionManager.getInstance().isProtected(level, pos)) {
                             continue;
                         }
@@ -344,12 +344,11 @@ public class SmeltItemAction extends BaseAction {
     }
 
     private AbstractCookingRecipe findCookingRecipeWithAvailableInput(ServerLevel level, Item outputItem) {
-        List<SmeltingRecipe> recipes = level.getServer().getRecipeManager()
-            .getAllRecipesFor(RecipeType.SMELTING);
-        for (AbstractCookingRecipe candidate : recipes) {
-            ItemStack output = candidate.getResultItem(level.registryAccess());
-            if (output.isEmpty() || !output.is(outputItem) || candidate.getIngredients().isEmpty()) continue;
-            Ingredient ingredient = candidate.getIngredients().get(0);
+        for (var holder : com.steve.ai.crafting.ModernRecipes.allRecipes(level.getServer())) {
+            if (!(holder.value() instanceof SmeltingRecipe candidate)) continue;
+            ItemStack output = com.steve.ai.crafting.ModernRecipes.resultOf(candidate);
+            if (output.isEmpty() || !output.is(outputItem) || com.steve.ai.crafting.ModernRecipes.ingredientsOf(candidate).isEmpty()) continue;
+            Ingredient ingredient = com.steve.ai.crafting.ModernRecipes.ingredientsOf(candidate).get(0);
             if (steve.getSteveInventory().getContents().stream().anyMatch(ingredient::test)) {
                 return candidate;
             }
@@ -358,24 +357,23 @@ public class SmeltItemAction extends BaseAction {
     }
 
     private boolean inputSmeltsTo(ServerLevel level, ItemStack input, Item outputItem) {
-        for (AbstractCookingRecipe candidate : level.getServer().getRecipeManager()
-                .getAllRecipesFor(RecipeType.SMELTING)) {
-            if (candidate.getIngredients().isEmpty()
-                    || !candidate.getIngredients().get(0).test(input)) continue;
-            ItemStack output = candidate.getResultItem(level.registryAccess());
+        for (var holder : com.steve.ai.crafting.ModernRecipes.allRecipes(level.getServer())) {
+            if (!(holder.value() instanceof SmeltingRecipe candidate)) continue;
+            if (com.steve.ai.crafting.ModernRecipes.ingredientsOf(candidate).isEmpty()
+                    || !com.steve.ai.crafting.ModernRecipes.ingredientsOf(candidate).get(0).test(input)) continue;
+            ItemStack output = com.steve.ai.crafting.ModernRecipes.resultOf(candidate);
             if (!output.isEmpty() && output.is(outputItem)) return true;
         }
         return false;
     }
 
     private AbstractCookingRecipe findCookingRecipeByOutput(ServerLevel level, Item outputItem) {
-        List<SmeltingRecipe> smelting = level.getServer().getRecipeManager()
-            .getAllRecipesFor(RecipeType.SMELTING);
         ItemStack expected = new ItemStack(outputItem);
-        for (AbstractCookingRecipe candidate : smelting) {
+        for (var holder : com.steve.ai.crafting.ModernRecipes.allRecipes(level.getServer())) {
+            if (!(holder.value() instanceof SmeltingRecipe candidate)) continue;
             try {
-                ItemStack candidateResult = candidate.getResultItem(level.registryAccess());
-                if (!candidateResult.isEmpty() && ItemStack.isSameItemSameTags(candidateResult, expected)) {
+                ItemStack candidateResult = com.steve.ai.crafting.ModernRecipes.resultOf(candidate);
+                if (!candidateResult.isEmpty() && ItemStack.isSameItemSameComponents(candidateResult, expected)) {
                     return candidate;
                 }
             } catch (Throwable ignored) {
@@ -388,10 +386,10 @@ public class SmeltItemAction extends BaseAction {
     private String findInputName(ServerLevel level) {
         AbstractCookingRecipe recipe = findCookingRecipeWithAvailableInput(level, parseItem(itemName));
         if (recipe == null) recipe = findCookingRecipeByOutput(level, parseItem(itemName));
-        if (recipe == null || recipe.getIngredients().isEmpty()) return "smelting_input";
-        ItemStack[] items = recipe.getIngredients().get(0).getItems();
-        if (items.length == 0) return "smelting_input";
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(items[0].getItem());
+        if (recipe == null || com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe).isEmpty()) return "smelting_input";
+        java.util.List<ItemStack> items = com.steve.ai.crafting.ModernRecipes.itemsOf(com.steve.ai.crafting.ModernRecipes.ingredientsOf(recipe).get(0));
+        if (items.isEmpty()) return "smelting_input";
+        Identifier id = BuiltInRegistries.ITEM.getKey(items.get(0).getItem());
         return id == null ? "smelting_input" : id.toString();
     }
 
@@ -401,7 +399,7 @@ public class SmeltItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

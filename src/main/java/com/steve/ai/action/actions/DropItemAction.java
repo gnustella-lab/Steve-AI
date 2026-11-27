@@ -4,7 +4,7 @@ import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -76,7 +76,7 @@ public class DropItemAction extends BaseAction {
         int droppedNow = 0;
         for (ItemStack stack : droppedItems) {
             droppedNow += stack.getCount();
-            steve.spawnAtLocation(stack);
+            steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), stack);
         }
 
         dropped += droppedNow;
@@ -106,7 +106,7 @@ public class DropItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

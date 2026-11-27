@@ -15,7 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -58,7 +58,7 @@ public class BuildStructureAction extends BaseAction {
         structureType = requestedStructure.toLowerCase();
         currentBlockIndex = 0;
         ticksRunning = 0;
-        String dimensionId = steve.level().dimension().location().toString();
+        String dimensionId = steve.level().dimension().identifier().toString();
         collaborativeBuild = CollaborativeBuildManager.findActiveBuild(
             structureType, dimensionId, steve.blockPosition(), JOIN_RADIUS);
         if (collaborativeBuild != null) {
@@ -240,7 +240,7 @@ public class BuildStructureAction extends BaseAction {
                 
                 steve.getLookControl().setLookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
                 
-                steve.swing(InteractionHand.MAIN_HAND, true);
+                steve.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);
                 
                 BlockState existingState = steve.level().getBlockState(pos);
                 
@@ -275,9 +275,10 @@ public class BuildStructureAction extends BaseAction {
                                 .observation("actionType", "build")
                                 .observation("missing_item", missing)
                                 .observation("missing_quantity", remaining);
-                            if (steve.level() instanceof ServerLevel level && level.getRecipeManager()
-                                    .getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING).stream()
-                                    .anyMatch(recipe -> recipe.getResultItem(level.registryAccess()).is(neededItem))) {
+                            if (steve.level() instanceof ServerLevel level
+                                    && com.steve.ai.crafting.ModernRecipes.allRecipes(level.getServer()).stream()
+                                    .anyMatch(holder -> holder.value().getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
+                                            && com.steve.ai.crafting.ModernRecipes.resultOf(holder.value()).is(neededItem))) {
                                 failure.observation("required_action", "craft")
                                     .observation("required_item", missing)
                                     .observation("required_quantity", remaining);
@@ -316,7 +317,7 @@ public class BuildStructureAction extends BaseAction {
                         15, 0.4, 0.4, 0.4, 0.15
                     );
                     
-                    var soundType = blockState.getSoundType(steve.level(), pos, steve);
+                    var soundType = blockState.getSoundType();
                     steve.level().playSound(null, pos, soundType.getPlaceSound(), 
                         SoundSource.BLOCKS, 1.0f, soundType.getPitch());
                 }
@@ -423,8 +424,8 @@ public class BuildStructureAction extends BaseAction {
         if (!blockName.contains(":")) {
             blockName = "minecraft:" + blockName;
         }
-        ResourceLocation resourceLocation = ResourceLocation.tryParse(blockName);
-        return resourceLocation != null ? BuiltInRegistries.BLOCK.get(resourceLocation) : Blocks.AIR;
+        Identifier resourceLocation = Identifier.tryParse(blockName);
+        return resourceLocation != null ? com.steve.ai.util.ModApi.block(resourceLocation) : Blocks.AIR;
     }
     
     /**
@@ -566,7 +567,7 @@ public class BuildStructureAction extends BaseAction {
                 
                 if (!blockState.isAir()) {
                     Block block = blockState.getBlock();
-                    if (block != Blocks.GRASS && block != Blocks.TALL_GRASS && 
+                    if (block != Blocks.SHORT_GRASS && block != Blocks.TALL_GRASS && 
                         block != Blocks.FERN && block != Blocks.DEAD_BUSH &&
                         block != Blocks.DANDELION && block != Blocks.POPPY) {
                         unsuitable++;

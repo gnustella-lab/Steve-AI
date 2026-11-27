@@ -8,7 +8,7 @@ import com.steve.ai.entity.SteveEntity;
 import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -206,7 +206,7 @@ public class CraftItemAction extends BaseAction {
         currentStepIndex++;
 
         if (!remainder.isEmpty()) {
-            steve.spawnAtLocation(remainder);
+            steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), remainder);
         }
 
         if (step.resultItem().equalsIgnoreCase(itemName)
@@ -269,7 +269,7 @@ public class CraftItemAction extends BaseAction {
         Recipe<?> recipe = step.recipe();
         if (recipe != null) {
             try {
-                ItemStack result = recipe.getResultItem(serverLevel.registryAccess());
+                ItemStack result = com.steve.ai.crafting.ModernRecipes.resultOf(recipe);
                 if (!result.isEmpty()) {
                     return result;
                 }
@@ -314,7 +314,7 @@ public class CraftItemAction extends BaseAction {
         java.util.LinkedHashMap<net.minecraft.world.item.Item, Integer> counts = new java.util.LinkedHashMap<>();
         for (ItemStack stack : steve.getSteveInventory().getContents()) {
             if (stack == null || stack.isEmpty()) continue;
-            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
             String id = key == null ? "" : key.toString();
             if (!id.endsWith("_planks")) continue;
             counts.merge(stack.getItem(), stack.getCount(), Integer::sum);
@@ -339,7 +339,7 @@ public class CraftItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

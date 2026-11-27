@@ -6,7 +6,7 @@ import java.util.function.Predicate;
 
 import net.minecraft.SharedConstants;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.BeforeAll;
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
  * the minecraft: namespace) do not misclassify a satisfied local goal as "needs LLM".
  *
  * <p>Uses the real item predicate (mirrors {@code AutonomyController.parseLocalRequest}) so the
- * {@code ResourceLocation.tryParse} default-namespace behaviour is exercised — the existing
+ * {@code Identifier.tryParse} default-namespace behaviour is exercised — the existing
  * {@link LocalGoalPlannerTest} uses a literal {@code Set<String>} predicate which never accepts an
  * unprefixed token, hiding this case.
  */
@@ -27,23 +27,22 @@ class LocalGoalPlannerCanonicalIdTest {
     private final LocalGoalPlanner planner = new LocalGoalPlanner();
 
     private static final Predicate<String> REAL_ITEM = id -> {
-        ResourceLocation rl = ResourceLocation.tryParse(id);
+        Identifier rl = Identifier.tryParse(id);
         return rl != null
             && BuiltInRegistries.ITEM.containsKey(rl)
-            && BuiltInRegistries.ITEM.get(rl) != Items.AIR;
+            && com.steve.ai.util.ModApi.item(rl) != Items.AIR;
     };
 
     @BeforeAll
     static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        com.steve.ai.TestBootstrap.bootstrap();
     }
 
     @Test
     void unprefixedItemResolvesToCanonicalMinecraftId() {
-        System.out.println("DIAG tryParse('wooden_pickaxe') = " + ResourceLocation.tryParse("wooden_pickaxe"));
+        System.out.println("DIAG tryParse('wooden_pickaxe') = " + Identifier.tryParse("wooden_pickaxe"));
         System.out.println("DIAG tryParse('minecraft:wooden_pickaxe') = "
-            + ResourceLocation.tryParse("minecraft:wooden_pickaxe"));
+            + Identifier.tryParse("minecraft:wooden_pickaxe"));
 
         var resolved = planner.parse("craft 1 wooden_pickaxe", REAL_ITEM);
         assertTrue(resolved.isPresent(), "Local grammar must accept the plain craft command");

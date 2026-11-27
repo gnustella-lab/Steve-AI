@@ -91,23 +91,23 @@ public final class WorldFact {
 
     public static WorldFact load(CompoundTag tag) {
         BlockPos position = tag.contains("X") && tag.contains("Y") && tag.contains("Z")
-            ? new BlockPos(tag.getInt("X"), tag.getInt("Y"), tag.getInt("Z")) : null;
+            ? new BlockPos(tag.getIntOr("X", 0), tag.getIntOr("Y", 0), tag.getIntOr("Z", 0)) : null;
         Kind kind;
         try {
-            kind = Kind.valueOf(tag.getString("Kind"));
+            kind = Kind.valueOf(tag.getStringOr("Kind", ""));
         } catch (IllegalArgumentException ignored) {
             kind = Kind.LANDMARK;
         }
         Map<String, String> details = new LinkedHashMap<>();
-        if (tag.contains("Details", CompoundTag.TAG_COMPOUND)) {
-            CompoundTag detailTag = tag.getCompound("Details");
-            for (String key : detailTag.getAllKeys()) {
-                details.put(key, detailTag.getString(key));
+        if (tag.contains("Details")) {
+            CompoundTag detailTag = tag.getCompoundOrEmpty("Details");
+            for (String key : detailTag.keySet()) {
+                details.put(key, detailTag.getStringOr(key, ""));
             }
         }
-        return new WorldFact(kind, tag.getString("Key"), tag.getString("Dimension"), position,
-            tag.getLong("LastSeen"), tag.contains("Confidence") ? tag.getDouble("Confidence") : 0.5,
-            tag.contains("Ttl") ? tag.getLong("Ttl") : 0L, details);
+        return new WorldFact(kind, tag.getStringOr("Key", ""), tag.getStringOr("Dimension", ""), position,
+            tag.getLongOr("LastSeen", 0L), tag.contains("Confidence") ? tag.getDoubleOr("Confidence", 0.0) : 0.5,
+            tag.contains("Ttl") ? tag.getLongOr("Ttl", 0L) : 0L, details);
     }
 
     private static double sanitizeConfidence(double confidence) {

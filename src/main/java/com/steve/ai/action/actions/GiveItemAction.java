@@ -4,7 +4,7 @@ import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -93,7 +93,7 @@ public class GiveItemAction extends BaseAction {
         }
         int deliveredCount = given.getCount();
         if (!serverPlayer.getInventory().add(given) && !given.isEmpty()) {
-            targetPlayer.drop(given, false);
+            targetPlayer.drop(given, false, net.minecraft.util.Prediction.SERVER_ONLY);
         }
 
         String msg = "Gave " + deliveredCount + " " + itemName
@@ -135,7 +135,7 @@ public class GiveItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }

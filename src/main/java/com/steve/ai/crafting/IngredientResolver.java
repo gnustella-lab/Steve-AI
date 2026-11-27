@@ -2,7 +2,7 @@ package com.steve.ai.crafting;
 
 import com.steve.ai.inventory.SteveInventory;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -175,8 +175,8 @@ public class IngredientResolver {
         if (ingredient == null || ingredient.isEmpty()) {
             return "";
         }
-        ItemStack[] items = ingredient.getItems();
-        if (items.length == 0) {
+        List<ItemStack> items = com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient);
+        if (items.isEmpty()) {
             return "";
         }
         if (inventory != null) {
@@ -196,7 +196,7 @@ public class IngredientResolver {
                 bestScore = score;
             }
         }
-        return best.isEmpty() ? idOf(items[0]) : best;
+        return best.isEmpty() ? idOf(items.get(0)) : best;
     }
 
     private static int preferenceScore(String id) {
@@ -220,7 +220,7 @@ public class IngredientResolver {
         if (stack == null || stack.isEmpty()) {
             return "";
         }
-        ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier key = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return key == null ? "" : key.toString();
     }
 }

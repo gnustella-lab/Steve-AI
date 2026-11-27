@@ -177,7 +177,7 @@ public final class LocalGoalPlanner {
     }
 
     /** Namespace-qualifies a resolved id so every consumer (recipe lookups, constraint equality
-     * gates) receives a canonical {@code minecraft:...} form. {@code ResourceLocation.tryParse}
+     * gates) receives a canonical {@code minecraft:...} form. {@code Identifier.tryParse}
      * defaults a bare id to the minecraft namespace, so a bare match would otherwise leak out of
      * {@link #resolveItem} and break local-plan gating. */
     private static String canonicalItem(String id) {

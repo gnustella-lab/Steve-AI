@@ -253,7 +253,7 @@ public class PermissionManager {
             Math.max(min.getX(), max.getX()),
             Math.max(min.getY(), max.getY()),
             Math.max(min.getZ(), max.getZ()));
-        return level.dimension().location() + ":" + canonicalMin.toShortString()
+        return level.dimension().identifier() + ":" + canonicalMin.toShortString()
             + "-" + canonicalMax.toShortString();
     }
 
@@ -263,7 +263,7 @@ public class PermissionManager {
         private final int maxX, maxY, maxZ;
 
         ProtectedRegion(ServerLevel level, BlockPos min, BlockPos max) {
-            this.dimensionKey = level.dimension().location().toString();
+            this.dimensionKey = level.dimension().identifier().toString();
             this.minX = Math.min(min.getX(), max.getX());
             this.minY = Math.min(min.getY(), max.getY());
             this.minZ = Math.min(min.getZ(), max.getZ());
@@ -273,7 +273,7 @@ public class PermissionManager {
         }
 
         boolean contains(ServerLevel level, BlockPos pos) {
-            if (!dimensionKey.equals(level.dimension().location().toString())) {
+            if (!dimensionKey.equals(level.dimension().identifier().toString())) {
                 return false;
             }
             return pos.getX() >= minX && pos.getX() <= maxX

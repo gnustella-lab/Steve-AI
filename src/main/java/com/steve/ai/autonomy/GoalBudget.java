@@ -89,15 +89,15 @@ public final class GoalBudget {
             return new GoalBudget();
         }
         GoalBudget budget = new GoalBudget(
-            tag.contains("MaxRetriesPerStep") ? tag.getInt("MaxRetriesPerStep") : DEFAULT_MAX_RETRIES_PER_STEP,
-            tag.contains("MaxReplans") ? tag.getInt("MaxReplans") : DEFAULT_MAX_REPLANS,
-            tag.contains("MaxLlmCalls") ? tag.getInt("MaxLlmCalls") : DEFAULT_MAX_LLM_CALLS,
-            tag.contains("MaxConsecutiveFailures") ? tag.getInt("MaxConsecutiveFailures") : DEFAULT_MAX_CONSECUTIVE_FAILURES,
+            tag.contains("MaxRetriesPerStep") ? tag.getIntOr("MaxRetriesPerStep", 0) : DEFAULT_MAX_RETRIES_PER_STEP,
+            tag.contains("MaxReplans") ? tag.getIntOr("MaxReplans", 0) : DEFAULT_MAX_REPLANS,
+            tag.contains("MaxLlmCalls") ? tag.getIntOr("MaxLlmCalls", 0) : DEFAULT_MAX_LLM_CALLS,
+            tag.contains("MaxConsecutiveFailures") ? tag.getIntOr("MaxConsecutiveFailures", 0) : DEFAULT_MAX_CONSECUTIVE_FAILURES,
             tag.contains("MaxRepeatedFailureFingerprint")
-                ? tag.getInt("MaxRepeatedFailureFingerprint") : DEFAULT_MAX_REPEATED_FAILURE_FINGERPRINT);
-        budget.llmCalls = Math.min(budget.maxLlmCalls, Math.max(0, tag.getInt("LlmCalls")));
+                ? tag.getIntOr("MaxRepeatedFailureFingerprint", 0) : DEFAULT_MAX_REPEATED_FAILURE_FINGERPRINT);
+        budget.llmCalls = Math.min(budget.maxLlmCalls, Math.max(0, tag.getIntOr("LlmCalls", 0)));
         budget.consecutiveFailures = Math.min(budget.maxConsecutiveFailures,
-            Math.max(0, tag.getInt("ConsecutiveFailures")));
+            Math.max(0, tag.getIntOr("ConsecutiveFailures", 0)));
         return budget;
     }
 

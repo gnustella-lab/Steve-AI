@@ -5,7 +5,7 @@ import com.steve.ai.entity.SteveEntity;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 @Mod.EventBusSubscriber(modid = SteveMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -25,10 +25,7 @@ public class ServerEventHandler {
     }
 
     @SubscribeEvent
-    public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
+    public static void onServerTick(TickEvent.ServerTickEvent.Post event) {
         for (SteveEntity steve : SteveMod.getSteveManager().getActiveSteves()) {
             steve.ensureServerTick();
         }

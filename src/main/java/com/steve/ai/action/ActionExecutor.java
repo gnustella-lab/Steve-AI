@@ -313,7 +313,7 @@ public class ActionExecutor {
     
     /** Envia feedback pelo chat do servidor quando habilitado. */
     private void sendToGUI(String steveName, String message) {
-        if (!steve.level().isClientSide && SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
+        if (!steve.level().isClientSide() && SteveConfig.ENABLE_CHAT_RESPONSES.get()) {
             steve.sendFeedback(message);
         }
     }

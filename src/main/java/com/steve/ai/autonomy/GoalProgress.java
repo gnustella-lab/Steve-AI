@@ -144,14 +144,14 @@ public final class GoalProgress {
             return new GoalProgress();
         }
         return new GoalProgress(
-            tag.getInt("CompletedUnits"),
-            tag.getInt("TargetUnits"),
-            tag.getInt("CompletedSteps"),
-            tag.getInt("TotalSteps"),
-            tag.getInt("AttemptCount"),
-            tag.getInt("ReplanCount"),
-            tag.getInt("FailureCount"),
-            tag.getLong("LastProgressTick"));
+            tag.getIntOr("CompletedUnits", 0),
+            tag.getIntOr("TargetUnits", 0),
+            tag.getIntOr("CompletedSteps", 0),
+            tag.getIntOr("TotalSteps", 0),
+            tag.getIntOr("AttemptCount", 0),
+            tag.getIntOr("ReplanCount", 0),
+            tag.getIntOr("FailureCount", 0),
+            tag.getLongOr("LastProgressTick", 0L));
     }
 
     private static int bounded(int value) {

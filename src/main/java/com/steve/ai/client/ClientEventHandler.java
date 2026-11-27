@@ -3,7 +3,7 @@ package com.steve.ai.client;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /** Handles client-side key presses and GUI animation. */
@@ -25,17 +25,13 @@ public class ClientEventHandler {
     }
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
-
+    public static void onClientTick(TickEvent.ClientTickEvent.Post event) {
         SteveGUI.tick();
 
         while (KeyBindings.TOGGLE_GUI != null && KeyBindings.TOGGLE_GUI.consumeClick()) {
             var minecraft = net.minecraft.client.Minecraft.getInstance();
             // Drain queued clicks even in screens; never steal chat/edit-box input.
-            if (PanelKeyPolicy.canOpen(minecraft.player != null, minecraft.screen != null)) {
+            if (PanelKeyPolicy.canOpen(minecraft.player != null, minecraft.gui.screen() != null)) {
                 SteveGUI.toggle();
             }
         }

@@ -4,7 +4,7 @@ import com.steve.ai.action.ActionResult;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -165,7 +165,7 @@ public final class GoalEvaluator {
     private static Item parseItem(String name) {
         String normalized = name.toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
         if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
-        ResourceLocation location = ResourceLocation.tryParse(normalized);
-        return location == null ? Items.AIR : BuiltInRegistries.ITEM.get(location);
+        Identifier location = Identifier.tryParse(normalized);
+        return location == null ? Items.AIR : com.steve.ai.util.ModApi.item(location);
     }
 }

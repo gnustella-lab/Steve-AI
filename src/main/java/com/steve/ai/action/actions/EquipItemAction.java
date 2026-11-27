@@ -4,8 +4,8 @@ import com.steve.ai.action.ActionResult;
 import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ArmorItem;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -55,9 +55,9 @@ public class EquipItemAction extends BaseAction {
             return;
         }
 
-        if (slot.getType() == net.minecraft.world.entity.EquipmentSlot.Type.ARMOR
-                && (!(targetItem instanceof ArmorItem armorItem)
-                    || armorItem.getEquipmentSlot() != slot)) {
+        if (slot.isArmor()
+                && (targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE) == null
+                    || targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE).slot() != slot)) {
             result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
                 itemName + " cannot be equipped in " + slotName).build();
             return;
@@ -80,7 +80,7 @@ public class EquipItemAction extends BaseAction {
         if (previouslyEquipped != null && !previouslyEquipped.isEmpty()) {
             ItemStack remainder = steve.getSteveInventory().insert(previouslyEquipped);
             if (!remainder.isEmpty()) {
-                steve.spawnAtLocation(remainder);
+                steve.spawnAtLocation((net.minecraft.server.level.ServerLevel) steve.level(), remainder);
             }
         }
 
@@ -116,7 +116,7 @@ public class EquipItemAction extends BaseAction {
         if (!name.contains(":")) {
             name = "minecraft:" + name;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(name);
-        return rl != null ? BuiltInRegistries.ITEM.get(rl) : Items.AIR;
+        Identifier rl = Identifier.tryParse(name);
+        return rl != null ? com.steve.ai.util.ModApi.item(rl) : Items.AIR;
     }
 }
