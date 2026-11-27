@@ -9,7 +9,7 @@ import com.steve.ai.execution.AgentState;
 import com.steve.ai.security.ActionPermission;
 import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
+import net.minecraftforge.gametest.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;

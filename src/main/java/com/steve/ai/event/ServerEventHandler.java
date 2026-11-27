@@ -25,10 +25,7 @@ public class ServerEventHandler {
     }
 
     @SubscribeEvent
-    public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
+    public static void onServerTick(TickEvent.ServerTickEvent.Post event) {
         for (SteveEntity steve : SteveMod.getSteveManager().getActiveSteves()) {
             steve.ensureServerTick();
         }

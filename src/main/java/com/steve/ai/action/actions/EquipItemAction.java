@@ -5,7 +5,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ArmorItem;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -56,8 +56,8 @@ public class EquipItemAction extends BaseAction {
         }
 
         if (slot.getType() == net.minecraft.world.entity.EquipmentSlot.Type.ARMOR
-                && (!(targetItem instanceof ArmorItem armorItem)
-                    || armorItem.getEquipmentSlot() != slot)) {
+                && (targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE) == null
+                    || targetItem.getDefaultInstance().get(DataComponents.EQUIPPABLE).slot() != slot)) {
             result = ActionResult.failure(ActionResult.ERROR_VALIDATION,
                 itemName + " cannot be equipped in " + slotName).build();
             return;

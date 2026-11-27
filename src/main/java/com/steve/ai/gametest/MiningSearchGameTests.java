@@ -6,7 +6,7 @@ import com.steve.ai.action.Task;
 import com.steve.ai.action.actions.GatherResourceAction;
 import com.steve.ai.entity.SteveEntity;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
+import net.minecraftforge.gametest.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraftforge.gametest.GameTestNamespace;

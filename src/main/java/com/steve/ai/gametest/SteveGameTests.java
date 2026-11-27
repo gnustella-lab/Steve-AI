@@ -21,7 +21,7 @@ import com.steve.ai.security.AgentCapability;
 import com.steve.ai.security.MobilityPolicy;
 import com.steve.ai.security.PermissionManager;
 import net.minecraft.core.BlockPos;
-import net.minecraft.gametest.framework.GameTest;
+import net.minecraftforge.gametest.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.InteractionHand;
@@ -104,7 +104,7 @@ public final class SteveGameTests {
                 && transientlyProtected.getHealth() == protectedHealth,
             "Authorized transient invulnerability must block ordinary damage");
         transientlyProtected.setInvulnerableBuilding(false);
-        transientlyProtected.invulnerableTime = 0;
+        transientlyProtected.clearInvulnerableTime();
         helper.assertTrue(transientlyProtected.hurt(
                 helper.getLevel().damageSources().generic(), 4.0F)
                 && transientlyProtected.getHealth() < protectedHealth,

@@ -74,7 +74,7 @@ public class StructureTemplateLoader {
                     continue;
                 }
                 SteveMod.LOGGER.info("Found structure in resources: {}", resourcePath);
-                CompoundTag nbt = NbtIo.readCompressed(resourceStream);
+                CompoundTag nbt = NbtIo.readCompressed(resourceStream, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
                 return parseNBTStructure(nbt, structureName);
             } catch (IOException e) {
                 SteveMod.LOGGER.error("Failed to load structure from resources: {}", resourcePath, e);
@@ -109,7 +109,7 @@ public class StructureTemplateLoader {
      */
     private static LoadedTemplate loadFromFile(File file, String name) {
         try (InputStream inputStream = new FileInputStream(file)) {
-            CompoundTag nbt = NbtIo.readCompressed(inputStream);
+            CompoundTag nbt = NbtIo.readCompressed(inputStream, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
             return parseNBTStructure(nbt, name);
         } catch (IOException e) {
             SteveMod.LOGGER.error("Failed to load structure from file: {}", file, e);
@@ -141,12 +141,12 @@ public class StructureTemplateLoader {
     private static LoadedTemplate parseNBTStructure(CompoundTag nbt, String name) {
         List<TemplateBlock> blocks = new ArrayList<>();
         
-        var sizeList = nbt.getList("size", 3); // 3 = TAG_Int
+        var sizeList = nbt.getListOrEmpty("size"); // 3 = TAG_Int
         int width = sizeList.getInt(0);
         int height = sizeList.getInt(1);
         int depth = sizeList.getInt(2);
         
-        var paletteList = nbt.getList("palette", 10); // 10 = TAG_Compound
+        var paletteList = nbt.getListOrEmpty("palette"); // 10 = TAG_Compound
         List<BlockState> palette = new ArrayList<>();
         
         for (int i = 0; i < paletteList.size(); i++) {
@@ -160,12 +160,12 @@ public class StructureTemplateLoader {
             }
         }
         
-        var blocksList = nbt.getList("blocks", 10);
+        var blocksList = nbt.getListOrEmpty("blocks");
         for (int i = 0; i < blocksList.size(); i++) {
             CompoundTag blockTag = blocksList.getCompound(i);
             
             int paletteIndex = blockTag.getInt("state");
-            var posList = blockTag.getList("pos", 3);
+            var posList = blockTag.getListOrEmpty("pos");
             
             BlockPos pos = new BlockPos(
                 posList.getInt(0),

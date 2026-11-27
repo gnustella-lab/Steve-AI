@@ -95,7 +95,7 @@ public class SteveEntity extends PathfinderMob {
      * Dedicated servers with no nearby player skip mob ticks; Steves must keep working.
      */
     public void ensureServerTick() {
-        if (this.level().isClientSide || !this.isAlive() || this.isRemoved()) {
+        if (this.level().isClientSide() || !this.isAlive() || this.isRemoved()) {
             return;
         }
         if (lastAutonomyGameTime == this.level().getGameTime()) {
@@ -105,7 +105,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     private void tickAutonomyIfNeeded() {
-        if (this.level().isClientSide) {
+        if (this.level().isClientSide()) {
             return;
         }
         long now = this.level().getGameTime();
@@ -276,7 +276,7 @@ public class SteveEntity extends PathfinderMob {
 
     @Override
     protected void pickUpItem(ItemEntity itemEntity) {
-        if (level().isClientSide || itemEntity == null || itemEntity.isRemoved()) {
+        if (level().isClientSide() || itemEntity == null || itemEntity.isRemoved()) {
             return;
         }
         ItemStack offered = itemEntity.getItem();
@@ -381,7 +381,7 @@ public class SteveEntity extends PathfinderMob {
      * If nobody is available the message is logged; unrelated nearby players are never chosen.
      */
     public void sendFeedback(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        if (this.level().isClientSide() || message == null || message.isBlank()) return;
         if (!(level() instanceof ServerLevel serverLevel)) {
             SteveMod.LOGGER.info("Steve '{}' feedback: {}", getSteveName(), message);
             return;
@@ -427,7 +427,7 @@ public class SteveEntity extends PathfinderMob {
     }
 
     public void sendOwnerMessage(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()
+        if (this.level().isClientSide() || message == null || message.isBlank()
                 || !(level() instanceof ServerLevel serverLevel)) return;
         UUID ownerUuid = accessProfile.getOwnerUuid();
         Player owner = ownerUuid == null ? null : serverLevel.getPlayerByUUID(ownerUuid);
@@ -441,7 +441,7 @@ public class SteveEntity extends PathfinderMob {
 
     /** Broadcast is intentionally explicit and must never be the default feedback path. */
     public void broadcastMessage(String message) {
-        if (this.level().isClientSide || message == null || message.isBlank()) return;
+        if (this.level().isClientSide() || message == null || message.isBlank()) return;
         Component component = feedbackComponent(message);
         this.level().players().forEach(player -> player.sendSystemMessage(component));
     }
@@ -529,6 +529,10 @@ public class SteveEntity extends PathfinderMob {
         }
     }
 
+    /** Clears vanilla post-damage invulnerability (used by runtime policy and tests). */
+    public void clearInvulnerableTime() {
+        this.invulnerableTime = 0;
+    }
     public boolean isBuildingInvulnerable() {
         return invulnerabilityScopes.contains(InvulnerabilityScopes.BUILDING);
     }
@@ -550,7 +554,7 @@ public class SteveEntity extends PathfinderMob {
 
     @Override
     public void travel(net.minecraft.world.phys.Vec3 travelVector) {
-        if (this.isFlying && !this.level().isClientSide) {
+        if (this.isFlying && !this.level().isClientSide()) {
             double motionY = this.getDeltaMovement().y;
             
             if (this.getNavigation().isInProgress()) {
