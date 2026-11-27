@@ -1,62 +1,48 @@
 plugins {
     id 'eclipse'
     id 'idea'
+    id 'java'
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'net.minecraftforge.gradle' version '[7.0.17,8)'
+    id 'net.minecraftforge.jarjar' version '0.2.3'
 }
 
-version = (findProperty('mod_version') ?: '1.7.1').toString().replaceFirst('^v', '')
+version = (findProperty('mod_version') ?: '1.8.2').toString().replaceFirst('^v', '')
 group = 'com.steve.ai'
 
 base {
     archivesName = 'steve-ai-mod'
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+// Minecraft 26.1+ ships and requires Java 25.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
-// Dependências externas precisam viajar dentro do mod de produção.
-jarJar.enable()
+// Jar-in-Jar: external runtime libraries travel inside the installable mod jar.
+jarJar.register()
 
 minecraft {
-    mappings channel: 'official', version: '1.20.1'
-
     runs {
-        client {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-
-            mods {
-                steve {
-                    source sourceSets.main
-                }
-            }
+        configureEach {
+            workingDir = layout.projectDirectory.dir('run')
+            systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
         }
 
-        server {
-            workingDirectory project.file('run')
+        register('client') {
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+        }
+
+        register('server') {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'info'
             args '--nogui'
             jvmArgs '-Xmx1280M', '-Xms512M'
-
-            mods {
-                steve {
-                    source sourceSets.main
-                }
-            }
         }
 
-        gameTestServer {
-            workingDirectory project.file('run-gametest')
+        register('gameTestServer') {
+            workingDir = layout.projectDirectory.dir('run-gametest')
             property 'forge.enabledGameTestNamespaces', (project.findProperty('gameTestNamespaces') ?: 'steve').toString()
             property 'forge.logging.console.level', 'info'
-
-            mods {
-                steve {
-                    source sourceSets.main
-                }
-            }
         }
     }
 }
@@ -64,56 +50,34 @@ minecraft {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
     mavenCentral()
 }
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.2.0'
+    implementation minecraft.dependency('net.minecraftforge:forge:26.3-66.1.9')
+    annotationProcessor 'net.minecraftforge:eventbus-validator:7.0.6'
 
-    // HTTP client - Using Java 11+ built-in HttpClient (no external dependencies needed!)
-    // JSON parsing - Minecraft already includes Gson
+    // HTTP client and JSON are provided by Java 25 and Minecraft (Gson).
 
-    // Resilience4j for fault tolerance (circuit breaker, retry, rate limiting, bulkhead)
-    implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.1.0'
-    implementation 'io.github.resilience4j:resilience4j-retry:2.1.0'
-    implementation 'io.github.resilience4j:resilience4j-ratelimiter:2.1.0'
-    implementation 'io.github.resilience4j:resilience4j-bulkhead:2.1.0'
-    minecraftLibrary 'io.github.resilience4j:resilience4j-circuitbreaker:2.1.0'
-    minecraftLibrary 'io.github.resilience4j:resilience4j-retry:2.1.0'
-    minecraftLibrary 'io.github.resilience4j:resilience4j-ratelimiter:2.1.0'
-    minecraftLibrary 'io.github.resilience4j:resilience4j-bulkhead:2.1.0'
-
-    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-core', version: '[2.1.0,2.2.0)') {
-        transitive = false
-        jarJar.pin(it, '2.1.0')
-    }
-    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-circuitbreaker', version: '[2.1.0,2.2.0)') {
-        transitive = false
-        jarJar.pin(it, '2.1.0')
-    }
-    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-retry', version: '[2.1.0,2.2.0)') {
-        transitive = false
-        jarJar.pin(it, '2.1.0')
-    }
-    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-ratelimiter', version: '[2.1.0,2.2.0)') {
-        transitive = false
-        jarJar.pin(it, '2.1.0')
-    }
-    jarJar(group: 'io.github.resilience4j', name: 'resilience4j-bulkhead', version: '[2.1.0,2.2.0)') {
-        transitive = false
-        jarJar.pin(it, '2.1.0')
+    // Resilience4j for fault tolerance (circuit breaker, retry, rate limiting, bulkhead).
+    ['resilience4j-core', 'resilience4j-circuitbreaker', 'resilience4j-retry',
+     'resilience4j-ratelimiter', 'resilience4j-bulkhead'].each { artifact ->
+        implementation "io.github.resilience4j:${artifact}:2.1.0"
+        jarJar("io.github.resilience4j:${artifact}:2.1.0") {
+            jarJar.configure(it) { range = '[2.1.0,2.2.0)' }
+        }
     }
 
-    // Caffeine cache for LLM response caching
+    // Caffeine cache for LLM response caching.
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
-    minecraftLibrary 'com.github.ben-manes.caffeine:caffeine:3.1.8'
-    jarJar(group: 'com.github.ben-manes.caffeine', name: 'caffeine', version: '[3.1.8,3.2.0)') {
-        transitive = false
-        jarJar.pin(it, '3.1.8')
+    jarJar('com.github.ben-manes.caffeine:caffeine:3.1.8') {
+        jarJar.configure(it) { range = '[3.1.8,3.2.0)' }
     }
 
-
-    // JUnit 5 for testing
+    // JUnit 5 for testing.
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.3'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.3'
 }
@@ -146,8 +110,6 @@ tasks.named('jar', Jar).configure {
             'Implementation-Vendor': 'Steve AI'
         ])
     }
-
-    finalizedBy 'reobfJar'
 }
 
 tasks.named('jarJar', Jar).configure {
@@ -166,7 +128,7 @@ def requiredRuntimeJars = [
 tasks.register('verifyReleaseJar') {
     group = 'verification'
     description = 'Verifies that the main distributable JAR contains all runtime libraries.'
-    dependsOn 'reobfJarJar'
+    dependsOn 'jarJar'
 
     doLast {
         def releaseJar = tasks.named('jarJar', Jar).get().archiveFile.get().asFile
@@ -214,4 +176,3 @@ publishing {
         }
     }
 }
-
