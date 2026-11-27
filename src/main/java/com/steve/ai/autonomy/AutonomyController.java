@@ -829,7 +829,7 @@ public final class AutonomyController {
         if (targetItem == net.minecraft.world.item.Items.AIR) return description;
         boolean craftable = level.getServer().getRecipeManager().getRecipes().stream()
             .anyMatch(recipe -> recipe.getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
-                && recipe.getResultItem(level.registryAccess()).is(targetItem));
+                && com.steve.ai.crafting.ModernRecipes.resultOf(recipe).is(targetItem));
         return craftable ? "Craft " + constraints.targetQuantity() + " " + item : description;
     }
 

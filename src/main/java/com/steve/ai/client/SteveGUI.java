@@ -165,11 +165,6 @@ public class SteveGUI {
         int panelX = (int) (screenWidth - PANEL_WIDTH + slideOffset);
         int panelY = 0;
         int panelHeight = screenHeight;
-            com.mojang.blaze3d.platform.GlStateManager.SourceFactor.SRC_ALPHA,
-            com.mojang.blaze3d.platform.GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
-            com.mojang.blaze3d.platform.GlStateManager.SourceFactor.ONE,
-            com.mojang.blaze3d.platform.GlStateManager.DestFactor.ZERO
-        );
         graphics.fillGradient(panelX, panelY, screenWidth, panelHeight, BACKGROUND_COLOR, BACKGROUND_COLOR);
         
         graphics.fillGradient(panelX - 2, panelY, panelX, panelHeight, BORDER_COLOR, BORDER_COLOR);

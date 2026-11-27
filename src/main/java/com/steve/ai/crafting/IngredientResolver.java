@@ -175,7 +175,7 @@ public class IngredientResolver {
         if (ingredient == null || ingredient.isEmpty()) {
             return "";
         }
-        ItemStack[] items = ingredient.getItems();
+        List<ItemStack> items = com.steve.ai.crafting.ModernRecipes.itemsOf(ingredient);
         if (items.length == 0) {
             return "";
         }

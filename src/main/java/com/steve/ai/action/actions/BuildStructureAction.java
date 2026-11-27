@@ -275,9 +275,10 @@ public class BuildStructureAction extends BaseAction {
                                 .observation("actionType", "build")
                                 .observation("missing_item", missing)
                                 .observation("missing_quantity", remaining);
-                            if (steve.level() instanceof ServerLevel level && level.getRecipeManager()
-                                    .getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING).stream()
-                                    .anyMatch(recipe -> recipe.getResultItem(level.registryAccess()).is(neededItem))) {
+                            if (steve.level() instanceof ServerLevel level
+                                    && com.steve.ai.crafting.ModernRecipes.allRecipes(level.getServer()).stream()
+                                    .anyMatch(holder -> holder.value().getType() == net.minecraft.world.item.crafting.RecipeType.CRAFTING
+                                            && com.steve.ai.crafting.ModernRecipes.resultOf(holder.value()).is(neededItem))) {
                                 failure.observation("required_action", "craft")
                                     .observation("required_item", missing)
                                     .observation("required_quantity", remaining);

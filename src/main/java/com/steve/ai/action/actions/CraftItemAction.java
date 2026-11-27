@@ -269,7 +269,7 @@ public class CraftItemAction extends BaseAction {
         Recipe<?> recipe = step.recipe();
         if (recipe != null) {
             try {
-                ItemStack result = recipe.getResultItem(serverLevel.registryAccess());
+                ItemStack result = com.steve.ai.crafting.ModernRecipes.resultOf(recipe);
                 if (!result.isEmpty()) {
                     return result;
                 }
