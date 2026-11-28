@@ -85,12 +85,25 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Steve AI ${{ steps.release_metadata.outputs.tag_name }}
           body: |
-            Release build for Steve AI.
+            Steve AI 1.9.0 - Minecraft 26.3 port
 
-            Asset:
-            - `${{ steps.release_metadata.outputs.jar_name }}`
+            This release moves the mod to Minecraft Java Edition 26.3 (Wilderness Bound) with Forge 66.1.9, Java 25, ForgeGradle 7 and Gradle 9.7.1. It replaces the previous 1.20.1 / Forge 47 / Java 17 toolchain and is not compatible with older Minecraft versions.
 
-            The `.sha256` file can be used to verify the downloaded JAR.
+            Changed
+            - Migrated Minecraft API usage (Identifier, GuiGraphicsExtractor, new input events, event bus, data components, synched data, NBT codecs, recipe displays) to the 26.3 API.
+            - Updated mod metadata to loader [66,) and Minecraft [26.3,26.4,); pack format 121.
+            - Updated the GitHub Actions build and release workflows to Java 25 / Gradle 9.7.1.
+            - Updated the launcher script and technical documentation to the 26.3 toolchain.
+
+            Verification
+            - GitHub Actions compiled main and test sources against forge 26.3-66.1.9 with `./gradlew clean test build`.
+            - The dedicated Forge GameTest server completed its test batch and initialized the mod runtime.
+            - Jar-in-Jar verification confirmed the installable artifact and all required bundled libraries.
+
+            Installation
+            - Install `${{ steps.release_metadata.outputs.jar_name }}` in your `mods` folder.
+            - Do not use the `-slim.jar` artifact; it cannot run by itself.
+            - Verify the download with the accompanying `.sha256` file.
           files: |
             ${{ steps.release_metadata.outputs.jar_path }}
             ${{ steps.release_metadata.outputs.checksum_path }}
