@@ -58,7 +58,7 @@ Snapshot baseline: `04fbd543365f522e68e8a0ca0e9cd7f72f9d35da` on `main`.
   EXPECT: BUILD SUCCESSFUL
   EVIDENCE: pending
 
-- [ ] G15: Final clean production build and release-JAR verification pass with Java 17/Gradle 8.4.
+- [ ] G15: Final clean production build and release-JAR verification pass with Java 25/Gradle 9.7.1 (Minecraft 26.3 / Forge 66.1.9), compiled on GitHub Actions.
   CHECK: ./gradlew clean build --stacktrace
   EXPECT: BUILD SUCCESSFUL
   EVIDENCE: pending

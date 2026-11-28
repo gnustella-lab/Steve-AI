@@ -10,29 +10,29 @@ echo "🎮 Steve AI Mod - Launcher"
 echo "================================"
 echo ""
 
-# Prefer a caller-provided Java 17, but support a local unpacked JDK for developers.
-if [ -z "${JAVA_HOME:-}" ] && [ -d "$PWD/jdk-17.0.2.jdk/Contents/Home" ]; then
-    export JAVA_HOME="$PWD/jdk-17.0.2.jdk/Contents/Home"
+# Minecraft 26.3 / Forge 66.1.9 require Java 25.
+# Prefer a caller-provided Java 25, but support a local unpacked JDK for developers.
+if [ -z "${JAVA_HOME:-}" ] && [ -d "$PWD/jdk-25.jdk/Contents/Home" ]; then
+    export JAVA_HOME="$PWD/jdk-25.jdk/Contents/Home"
 fi
 
 if [ -n "${JAVA_HOME:-}" ]; then
     export PATH="$JAVA_HOME/bin:$PATH"
     echo "✅ Using JAVA_HOME=$JAVA_HOME"
 else
-    echo "⚠️  JAVA_HOME is not set; make sure your default Java is Java 17."
+    echo "⚠️  JAVA_HOME is not set; make sure your default Java is Java 25."
 fi
 
 echo "Starting Minecraft..."
 echo "⏳ First launch will download assets (~1-2 minutes)"
 echo ""
 
-# Run Minecraft. The wrapper JAR is intentionally not committed because this fork
-# must not include binary files in PRs.
+# Run Minecraft with the committed Gradle 9.7.1 wrapper (fallback for source-only checkouts).
 if [ -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
     ./gradlew runClient --no-daemon
 else
-    echo "gradle-wrapper.jar is not committed in this fork because binary files are not allowed in PRs."
-    echo "Using local Gradle installation instead. Run 'gradle wrapper --gradle-version 8.4' locally if you need ./gradlew."
+    echo "gradle-wrapper.jar is missing; using the local Gradle installation instead."
+    echo "Regenerate the wrapper with 'gradle wrapper --gradle-version 9.7.1' if needed."
     gradle runClient --no-daemon
 fi
 

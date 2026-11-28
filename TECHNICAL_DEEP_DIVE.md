@@ -134,8 +134,8 @@ Built a production-grade agentic AI system with LLM-driven natural language unde
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Platform** | Minecraft Forge 1.20.1 | Mod framework for Minecraft Java |
-| **Language** | Java 17 | Primary implementation language |
+| **Platform** | Minecraft 26.3 (Wilderness Bound) with Forge 66.1.9 | Mod framework for Minecraft Java |
+| **Language** | Java 25 | Primary implementation language |
 | **AI Providers** | Groq, OpenAI, Gemini | LLM inference for natural language |
 | **Architecture** | Custom Agent Loop | ReAct-inspired (Reason → Act → Observe) |
 | **Concurrency** | ConcurrentHashMap, AtomicInteger | Lock-free multi-agent coordination |
@@ -2198,7 +2198,8 @@ public boolean isInvulnerableTo(DamageSource source) {
 | **API Reliability** | 98% success rate (with retries) |
 | **Memory Footprint** | <50MB per agent |
 | **External Dependencies** | 0 (uses Java 11+ HttpClient, Gson bundled in Minecraft) |
-| **Supported Minecraft Version** | 1.20.1 |
+| **Supported Minecraft Version** | 26.3 (Wilderness Bound), Forge 66.1.9 |
+| **Build Toolchain** | Gradle 9.7.1 + ForgeGradle 7 (see `.github/workflows/ci.yml`) |
 | **Build Time** | ~5 seconds (Gradle) |
 
 *Crafting stubbed out
